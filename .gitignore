@@ -1,0 +1,29 @@
+# R specific
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# R build artifacts
+*.tar.gz
+*.zip
+
+# Package specific
+/man/*.Rd
+/Meta/
+/doc/
+/inst/doc/
+
+# Development
+.DS_Store
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# Testing
+tests/testthat/_snaps/

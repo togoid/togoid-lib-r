@@ -1,0 +1,33 @@
+Package: togoid
+Type: Package
+Title: R Library for Biological Database ID Conversion and Annotation
+Version: 1.0.0
+Authors@R: c(
+    person("DBCLS", email = "noreply@dbcls.jp", role = c("aut", "cre"))
+    )
+Description: R library and CLI tool for biological database ID conversion and
+    annotation using TogoID (https://togoid.dbcls.jp/). Provides functions for
+    converting IDs between biological databases, retrieving annotations, and
+    converting labels to IDs.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Imports:
+    R6,
+    httr2,
+    jsonlite,
+    dplyr,
+    tibble,
+    cli,
+    rlang
+Suggests:
+    ghql,
+    testthat (>= 3.0.0),
+    covr,
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+URL: https://togoid.dbcls.jp, https://github.com/togoid/togoid-lib-r
+BugReports: https://github.com/togoid/togoid-lib-r/issues
