@@ -62,9 +62,10 @@ togoid_get_ortholog <- function(ids, route, target_taxids, format = "dataframe")
 #' @param dataset Dataset name
 #' @param ids Character vector of IDs
 #' @param fields Character vector of field names to retrieve
-#' @param filters Named list of filters
+#' @param filters Named list of filters (e.g., list(go_aspect = c("molecular_function")))
+#' @param format Output format: "list" or "dataframe" (default: "dataframe")
 #'
-#' @return Named list: id -> field -> value
+#' @return Named list (id -> field -> value) or data.frame
 #' @export
 #'
 #' @examples
@@ -75,14 +76,23 @@ togoid_get_ortholog <- function(ids, route, target_taxids, format = "dataframe")
 #'   ids = c("672", "7157"),
 #'   fields = c("label", "gene_synonym")
 #' )
+#'
+#' # With filter
+#' result <- togoid_annotate(
+#'   dataset = "go",
+#'   ids = c("GO:0003674", "GO:0008150"),
+#'   fields = c("label", "go_aspect"),
+#'   filters = list(go_aspect = c("molecular_function"))
+#' )
 #' }
-togoid_annotate <- function(dataset, ids, fields, filters = list()) {
+togoid_annotate <- function(dataset, ids, fields, filters = list(), format = "dataframe") {
   annotator <- AnnotationsConverter$new()
   annotator$execute_query(
     dataset_name = dataset,
     ids = ids,
     fields = fields,
-    filters = filters
+    filters = filters,
+    format = format
   )
 }
 
@@ -113,9 +123,10 @@ togoid_list_fields <- function(dataset) {
 #' @param labels Character vector of labels to convert
 #' @param dataset Dataset name (e.g., "ncbigene", "chebi")
 #' @param taxonomy Taxonomy ID (e.g., "9606" for human)
+#' @param format Output format: "list" or "dataframe" (default: "dataframe")
 #' @param ... Additional parameters passed to LabelConverter$convert()
 #'
-#' @return List of result lists
+#' @return List of result lists or data.frame
 #' @export
 #'
 #' @examples
@@ -127,9 +138,9 @@ togoid_list_fields <- function(dataset) {
 #'   taxonomy = "9606"
 #' )
 #' }
-togoid_label2id <- function(labels, dataset, taxonomy = NULL, ...) {
+togoid_label2id <- function(labels, dataset, taxonomy = NULL, format = "dataframe", ...) {
   converter <- LabelConverter$new()
-  converter$convert(labels = labels, dataset = dataset, taxonomy = taxonomy, ...)
+  converter$convert(labels = labels, dataset = dataset, taxonomy = taxonomy, format = format, ...)
 }
 
 #' Search databases by name
@@ -170,4 +181,24 @@ togoid_search_databases <- function(name) {
 togoid_route <- function(src, dst, max_hops = 3) {
   converter <- TogoIDConverter$new()
   converter$route(src, dst, max_hops)
+}
+
+#' Get list of target datasets reachable from a source dataset
+#'
+#' Wrapper function for TogoIDConverter$config_list_targets()
+#'
+#' @param source Source dataset name (e.g., "ncbigene")
+#'
+#' @return Character vector of target dataset names
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Get all datasets reachable from ncbigene in one hop
+#' targets <- togoid_config_list_targets("ncbigene")
+#' print(targets)
+#' }
+togoid_config_list_targets <- function(source) {
+  converter <- TogoIDConverter$new()
+  converter$config_list_targets(source)
 }

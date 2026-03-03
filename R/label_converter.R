@@ -48,10 +48,11 @@ LabelConverter <- R6::R6Class(
     #' @param threshold Matching threshold for PubDictionaries (0-1)
     #' @param label_types Label types override (e.g., "symbol,synonym")
     #' @param dictionaries Dictionaries override for PubDictionaries
+    #' @param format Output format: "list" or "dataframe" (default: "dataframe")
     #'
-    #' @return List of result lists
+    #' @return List of result lists or data.frame
     convert = function(labels, dataset, taxonomy = NULL, threshold = 0.5,
-                      label_types = NULL, dictionaries = NULL) {
+                      label_types = NULL, dictionaries = NULL, format = "dataframe") {
 
       if (length(labels) == 0) {
         return(list())
@@ -69,6 +70,7 @@ LabelConverter <- R6::R6Class(
       # Check if SPARQList should be used
       use_sparqlist <- private$should_use_sparqlist(dataset_config)
 
+      # Get results based on API
       if (use_sparqlist) {
         label_resolver <- dataset_config$label_resolver
         sparqlist_endpoint <- label_resolver$sparqlist
@@ -89,12 +91,12 @@ LabelConverter <- R6::R6Class(
           cli::cli_alert_info("Using SPARQList API for dataset: {dataset}")
         }
 
-        return(self$convert_sparqlist(
+        results <- self$convert_sparqlist(
           labels = labels,
           sparqlist = sparqlist_endpoint,
           label_types = label_types,
           taxonomy = taxonomy
-        ))
+        )
 
       } else {
         # Use PubDictionaries
@@ -108,12 +110,19 @@ LabelConverter <- R6::R6Class(
           cli::cli_alert_info("Using PubDictionaries API for dataset: {dataset}")
         }
 
-        return(self$convert_pubdictionaries(
+        results <- self$convert_pubdictionaries(
           labels = labels,
           dictionaries = dictionaries,
           tags = taxonomy,
           threshold = threshold
-        ))
+        )
+      }
+
+      # Convert to requested format
+      if (format == "dataframe") {
+        return(private$convert_to_dataframe(results))
+      } else {
+        return(results)
       }
     },
 
@@ -336,6 +345,25 @@ LabelConverter <- R6::R6Class(
     should_use_sparqlist = function(dataset_config) {
       label_resolver <- dataset_config$label_resolver %||% list()
       return(!is.null(label_resolver$sparqlist))
+    },
+
+    #' Convert results list to data.frame
+    #'
+    #' @param results List of result lists
+    #'
+    #' @return data.frame
+    convert_to_dataframe = function(results) {
+      if (length(results) == 0) {
+        return(data.frame())
+      }
+
+      # Convert list of lists to data.frame
+      df <- do.call(rbind, lapply(results, function(result) {
+        as.data.frame(result, stringsAsFactors = FALSE)
+      }))
+
+      rownames(df) <- NULL
+      return(df)
     }
   )
 )
