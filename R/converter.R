@@ -34,13 +34,13 @@ TogoIDConverter <- R6::R6Class(
     #' @param ids Character vector of source IDs
     #' @param route Character vector of database names forming the conversion route
     #' @param format Output format: "json", "list", "table", "dataframe", "tibble"
-    #' @param report Report type: "target", "pair", "full"
+    #' @param report Report type: "target", "pair", "full" (default: "full")
     #' @param annotate List of lists: list(list("dataset", "field")) to add annotation columns
     #' @param filter List of lists: list(list("dataset", "field", c("values"))) to filter results
     #' @param ... Additional parameters passed to API
     #'
     #' @return Converted IDs in specified format
-    convert = function(ids, route, format = "dataframe", report = "pair",
+    convert = function(ids, route, format = "dataframe", report = "full",
                       annotate = NULL, filter = NULL, ...) {
 
       # Validate inputs
@@ -291,6 +291,46 @@ TogoIDConverter <- R6::R6Class(
         method = "GET"
       )
       return(result)
+    },
+
+    #' @description
+    #' Get list of datasets reachable from the specified source dataset in one hop
+    #'
+    #' @param source Source dataset name (e.g., "ncbigene")
+    #'
+    #' @return Character vector of target dataset names
+    #'
+    #' @examples
+    #' \dontrun{
+    #' converter <- TogoIDConverter$new()
+    #' targets <- converter$config_list_targets(source = "ncbigene")
+    #' print(targets)
+    #' }
+    config_list_targets = function(source) {
+      # Get all relation configurations
+      relations <- self$config_relation()
+
+      targets <- character()
+
+      # Parse each relation key
+      for (relation_key in names(relations)) {
+        # Split key by "-"
+        parts <- strsplit(relation_key, "-")[[1]]
+
+        # Check if it's a valid format (2 parts)
+        if (length(parts) == 2) {
+          src <- parts[1]
+          dst <- parts[2]
+
+          # If source matches, add target to list
+          if (src == source) {
+            targets <- c(targets, dst)
+          }
+        }
+      }
+
+      # Remove duplicates and sort
+      return(sort(unique(targets)))
     }
   ),
 
@@ -310,8 +350,8 @@ TogoIDConverter <- R6::R6Class(
         "json" = return(response),
         "list" = return(private$convert_to_list(response, route, ids)),
         "table" = return(private$convert_to_table(response)),
-        "dataframe" = return(private$convert_to_dataframe(response)),
-        "tibble" = return(private$convert_to_tibble(response)),
+        "dataframe" = return(private$convert_to_dataframe(response, route)),
+        "tibble" = return(private$convert_to_tibble(response, route)),
         return(response) # default
       )
     },
@@ -346,32 +386,56 @@ TogoIDConverter <- R6::R6Class(
     #' Convert response to data.frame
     #'
     #' @param response API response
+    #' @param route Conversion route
     #'
     #' @return data.frame
-    convert_to_dataframe = function(response) {
+    convert_to_dataframe = function(response, route) {
       table_data <- private$convert_to_table(response)
 
       if (length(table_data) == 0) {
-        return(data.frame())
+        # Return empty dataframe with route column names
+        empty_df <- as.data.frame(matrix(ncol = length(route), nrow = 0))
+        colnames(empty_df) <- route
+        return(empty_df)
       }
 
       # Convert to data.frame
       if (is.list(table_data) && length(table_data) > 0) {
-        # Check first element to determine number of columns
-        first_row <- table_data[[1]]
-        ncols <- length(first_row)
+        # Replace NULL values with NA and determine the maximum length across all rows
+        table_data_clean <- lapply(table_data, function(row) {
+          lapply(row, function(elem) {
+            if (is.null(elem)) NA_character_ else as.character(elem)
+          })
+        })
 
-        # Create column names
-        col_names <- if (ncols == 2) {
-          c("source_id", "target_id")
-        } else {
-          paste0("V", seq_len(ncols))
-        }
+        # Determine the maximum length across all rows
+        max_length <- max(sapply(table_data_clean, length))
+
+        # Pad all rows to the maximum length
+        table_data_padded <- lapply(table_data_clean, function(row) {
+          if (length(row) < max_length) {
+            c(row, rep(list(NA_character_), max_length - length(row)))
+          } else {
+            row
+          }
+        })
 
         # Convert each row to a data.frame row
-        df <- do.call(rbind, lapply(table_data, function(row) {
+        df <- do.call(rbind, lapply(table_data_padded, function(row) {
           as.data.frame(t(unlist(row)), stringsAsFactors = FALSE)
         }))
+
+        # Create column names based on route
+        ncols <- ncol(df)
+        if (ncols == length(route)) {
+          col_names <- route
+        } else if (ncols < length(route)) {
+          # Use last N dataset names from route
+          col_names <- route[(length(route) - ncols + 1):length(route)]
+        } else {
+          # More columns than route - use route names + generic names
+          col_names <- c(route, paste0("col_", seq_len(ncols - length(route))))
+        }
 
         colnames(df) <- col_names
         rownames(df) <- NULL
@@ -384,10 +448,11 @@ TogoIDConverter <- R6::R6Class(
     #' Convert response to tibble
     #'
     #' @param response API response
+    #' @param route Conversion route
     #'
     #' @return tibble
-    convert_to_tibble = function(response) {
-      df <- private$convert_to_dataframe(response)
+    convert_to_tibble = function(response, route) {
+      df <- private$convert_to_dataframe(response, route)
       return(tibble::as_tibble(df))
     },
 

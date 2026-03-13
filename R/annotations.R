@@ -124,10 +124,11 @@ AnnotationsConverter <- R6::R6Class(
     #' @param dataset_name Dataset name
     #' @param ids Character vector of IDs
     #' @param fields Character vector of field names to retrieve
-    #' @param filters Named list of filters
+    #' @param filters Named list of filters (e.g., list(go_aspect = c("molecular_function")))
+    #' @param format Output format: "list" or "dataframe" (default: "dataframe")
     #'
-    #' @return Named list: id -> field -> value
-    execute_query = function(dataset_name, ids, fields, filters = list()) {
+    #' @return Named list (id -> field -> value) or data.frame
+    execute_query = function(dataset_name, ids, fields, filters = list(), format = "dataframe") {
 
       if (length(ids) == 0) {
         return(list())
@@ -173,7 +174,17 @@ AnnotationsConverter <- R6::R6Class(
         }
       }
 
-      return(all_records)
+      # Apply filters
+      if (length(filters) > 0) {
+        all_records <- private$apply_filters(all_records, filters)
+      }
+
+      # Convert to requested format
+      if (format == "dataframe") {
+        return(private$records_to_dataframe(all_records, fields))
+      } else {
+        return(all_records)
+      }
     },
 
     #' @description
@@ -364,6 +375,89 @@ AnnotationsConverter <- R6::R6Class(
           ))
         }
       )
+    },
+
+    #' Apply filters to records
+    #'
+    #' @param records Named list of records
+    #' @param filters Named list of filters
+    #'
+    #' @return Filtered records
+    apply_filters = function(records, filters) {
+      filtered_records <- list()
+
+      for (id_value in names(records)) {
+        record <- records[[id_value]]
+        passes_filters <- TRUE
+
+        for (filter_name in names(filters)) {
+          if (!filter_name %in% names(record)) {
+            passes_filters <- FALSE
+            break
+          }
+
+          allowed_values <- filters[[filter_name]]
+          record_value <- record[[filter_name]]
+
+          if (is.list(record_value)) {
+            # Check if any value matches
+            if (!any(as.character(unlist(record_value)) %in% allowed_values)) {
+              passes_filters <- FALSE
+              break
+            }
+          } else {
+            if (!as.character(record_value) %in% allowed_values) {
+              passes_filters <- FALSE
+              break
+            }
+          }
+        }
+
+        if (passes_filters) {
+          filtered_records[[id_value]] <- record
+        }
+      }
+
+      return(filtered_records)
+    },
+
+    #' Convert records to data.frame
+    #'
+    #' @param records Named list of records
+    #' @param fields Field names
+    #'
+    #' @return data.frame
+    records_to_dataframe = function(records, fields) {
+      if (length(records) == 0) {
+        return(data.frame())
+      }
+
+      # Build rows
+      rows <- lapply(names(records), function(id_value) {
+        record <- records[[id_value]]
+        row <- list(id = id_value)
+
+        for (field in fields) {
+          if (field == "id") next
+
+          value <- record[[field]]
+          if (is.null(value)) {
+            row[[field]] <- NA_character_
+          } else if (is.list(value) && length(value) > 0) {
+            # Collapse list values to a single string
+            row[[field]] <- paste(unlist(value), collapse = ", ")
+          } else {
+            row[[field]] <- as.character(value)
+          }
+        }
+
+        return(as.data.frame(row, stringsAsFactors = FALSE))
+      })
+
+      # Combine all rows
+      df <- do.call(rbind, rows)
+      rownames(df) <- NULL
+      return(df)
     }
   )
 )

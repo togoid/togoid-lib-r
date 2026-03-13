@@ -51,13 +51,15 @@ library(togoid)
 # Functional style - convert ncbigene to ensembl_gene
 result <- togoid_convert(
   ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene"),
-  format = "dataframe"
+  route = c("ncbigene", "ensembl_gene")
 )
 print(result)
-#   source_id      target_id
-# 1         1 ENSG00000121410
-# 2         9 ENSG00000171428
+#   ncbigene  ensembl_gene
+# 1        1 ENSG00000121410
+# 2        9 ENSG00000171428
+
+# Note: Column names use dataset names from the route
+# Default format is "dataframe" with report="full"
 
 # Using pipe operator
 c("1", "9") |>
@@ -94,14 +96,20 @@ print(orthologs)
 
 ```r
 # Convert gene symbols to ncbigene IDs
+# Default format is now "dataframe"
 result <- togoid_label2id(
   labels = c("BRCA1", "TP53", "EGFR"),
   dataset = "ncbigene",
   taxonomy = "9606"  # Human
 )
+print(result)
+#   input match_type symbol identifier taxonomy
+# 1 BRCA1     symbol  BRCA1        672     9606
+# 2  TP53     symbol   TP53       7157     9606
+# 3  EGFR     symbol   EGFR       1956     9606
 
 # Extract IDs
-ids <- sapply(result, function(x) x$identifier)
+ids <- result$identifier
 print(ids)
 # [1] "672"  "7157" "1956"
 ```
@@ -113,16 +121,24 @@ print(ids)
 fields <- togoid_list_fields("ncbigene")
 print(fields)
 
-# Get annotations
+# Get annotations (default format is now "dataframe")
 annotations <- togoid_annotate(
   dataset = "ncbigene",
   ids = c("672", "7157"),
-  fields = c("label", "gene_synonym", "full_name")
+  fields = c("label", "gene_synonym")
 )
+print(annotations)
+#    id label              gene_synonym
+# 1 672 BRCA1 RNF53, BRCC1, FANCS, ...
+# 2 7157 TP53  P53, LFS1, TRP53, ...
 
-# Access annotations
-print(annotations[["672"]]$label)
-# [1] "BRCA1"
+# With filters (R uses named lists)
+annotations <- togoid_annotate(
+  dataset = "go",
+  ids = c("GO:0005643", "GO:0097110"),
+  fields = c("label", "go_aspect"),
+  filters = list(go_aspect = c("molecular_function"))
+)
 ```
 
 ### Search and Route
@@ -137,6 +153,11 @@ routes <- togoid_route(
   dst = "uniprot",
   max_hops = 3
 )
+
+# List target datasets reachable from a source in one hop
+targets <- togoid_config_list_targets("ncbigene")
+print(targets)
+# [1] "ensembl_gene" "ensembl_protein" "ensembl_transcript" ...
 ```
 
 ## Usage Examples
@@ -251,7 +272,7 @@ data <- data |>
 
 #### TogoIDConverter
 
-- `convert(ids, route, format, ...)` - Convert IDs between databases
+- `convert(ids, route, format, report, ...)` - Convert IDs between databases (default: format="dataframe", report="full")
 - `get_ortholog(ids, route, target_taxids, format)` - Get orthologs
 - `search_databases(name)` - Search databases by name
 - `search_id(id_string)` - Search databases by ID pattern
@@ -263,29 +284,31 @@ data <- data |>
 - `config_descriptions()` - Get database descriptions
 - `config_statistics()` - Get database statistics
 - `config_taxonomy()` - Get taxonomy list
+- `config_list_targets(source)` - List target datasets reachable in one hop
 
 #### AnnotationsConverter
 
 - `get_dataset(dataset_name)` - Get dataset configuration
 - `list_fields(dataset_name)` - List available annotation fields
-- `execute_query(dataset_name, ids, fields, filters)` - Execute GraphQL query
+- `execute_query(dataset_name, ids, fields, filters, format)` - Execute GraphQL query (default format: "dataframe")
 - `build_rows(dataset_label, fields, field_meta, records, filters, compact)` - Build table rows
 
 #### LabelConverter
 
-- `convert(labels, dataset, taxonomy, ...)` - Convert labels to IDs (auto-detects API)
+- `convert(labels, dataset, taxonomy, format, ...)` - Convert labels to IDs (auto-detects API, default format: "dataframe")
 - `convert_pubdictionaries(labels, dictionaries, tags, threshold, ...)` - Use PubDictionaries API
 - `convert_sparqlist(labels, sparqlist, label_types, taxonomy)` - Use SPARQList API
 
 ### Wrapper Functions
 
-- `togoid_convert(ids, route, format, ...)` - ID conversion
+- `togoid_convert(ids, route, format, ...)` - ID conversion (default: format="dataframe", report="full")
 - `togoid_get_ortholog(ids, route, target_taxids, format)` - Ortholog retrieval
-- `togoid_annotate(dataset, ids, fields, filters)` - Get annotations
+- `togoid_annotate(dataset, ids, fields, filters, format)` - Get annotations (default format: "dataframe")
 - `togoid_list_fields(dataset)` - List annotation fields
-- `togoid_label2id(labels, dataset, taxonomy, ...)` - Label to ID conversion
+- `togoid_label2id(labels, dataset, taxonomy, format, ...)` - Label to ID conversion (default format: "dataframe")
 - `togoid_search_databases(name)` - Search databases
 - `togoid_route(src, dst, max_hops)` - Find routes
+- `togoid_config_list_targets(source)` - List target datasets reachable in one hop
 
 ## Configuration
 
