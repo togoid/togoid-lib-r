@@ -135,7 +135,7 @@ print(annotations)
 # With filters (R uses named lists)
 annotations <- togoid_annotate(
   dataset = "go",
-  ids = c("GO:0003674", "GO:0008150"),
+  ids = c("GO:0005643", "GO:0097110"),
   fields = c("label", "go_aspect"),
   filters = list(go_aspect = c("molecular_function"))
 )
