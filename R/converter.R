@@ -493,19 +493,219 @@ TogoIDConverter <- R6::R6Class(
       return(filtered)
     },
 
-    #' Add annotations to conversion results (placeholder)
+    #' Add annotations to conversion results
     #'
     #' @param response API response
     #' @param route Conversion route
-    #' @param annotate Annotation specifications
-    #' @param filter Filter specifications
+    #' @param annotate Annotation specifications: list(list("dataset", "field"), ...)
+    #' @param filter Filter specifications: list(list("dataset", "field", c("values")), ...)
     #'
     #' @return Response with annotations
     add_annotations = function(response, route, annotate, filter) {
-      # TODO: Implement annotation functionality
-      # This requires AnnotationsConverter class
-      cli::cli_warn("Annotation functionality not yet implemented in R version")
-      return(response)
+      # Extract table data from response
+      if (is.list(response) && "results" %in% names(response)) {
+        table_data <- response$results
+      } else {
+        table_data <- private$convert_to_table(response)
+      }
+
+      if (length(table_data) == 0) {
+        return(response)
+      }
+
+      # Initialize annotations converter
+      ann_converter <- AnnotationsConverter$new(api_endpoint = self$api_base_url)
+
+      # Build a mapping of dataset -> set of fields
+      fields_to_fetch <- list()
+
+      # Collect fields from annotate parameter
+      if (!is.null(annotate)) {
+        for (ann_spec in annotate) {
+          dataset_name <- ann_spec[[1]]
+          field_name <- ann_spec[[2]]
+
+          if (!dataset_name %in% names(fields_to_fetch)) {
+            fields_to_fetch[[dataset_name]] <- character()
+          }
+          fields_to_fetch[[dataset_name]] <- unique(c(fields_to_fetch[[dataset_name]], field_name))
+        }
+      }
+
+      # Collect fields from filter parameter
+      if (!is.null(filter)) {
+        for (filter_spec in filter) {
+          dataset_name <- filter_spec[[1]]
+          field_name <- filter_spec[[2]]
+
+          if (!dataset_name %in% names(fields_to_fetch)) {
+            fields_to_fetch[[dataset_name]] <- character()
+          }
+          fields_to_fetch[[dataset_name]] <- unique(c(fields_to_fetch[[dataset_name]], field_name))
+        }
+      }
+
+      # Fetch all required annotations
+      annotations_cache <- list()
+
+      for (dataset_name in names(fields_to_fetch)) {
+        if (!dataset_name %in% route) {
+          cli::cli_abort("Dataset '{dataset_name}' not found in route {route}")
+        }
+
+        # Collect all IDs for this dataset
+        dataset_index <- which(route == dataset_name)[1]
+        ids_to_annotate <- character()
+
+        for (row in table_data) {
+          if (is.list(row) && length(row) >= dataset_index) {
+            id_value <- as.character(row[[dataset_index]])
+            if (!is.na(id_value) && id_value != "") {
+              ids_to_annotate <- c(ids_to_annotate, id_value)
+            }
+          }
+        }
+
+        ids_to_annotate <- unique(ids_to_annotate)
+
+        if (length(ids_to_annotate) == 0) {
+          next
+        }
+
+        # Execute annotation query
+        tryCatch({
+          records <- ann_converter$execute_query(
+            dataset_name = dataset_name,
+            ids = ids_to_annotate,
+            fields = fields_to_fetch[[dataset_name]],
+            filters = list(),
+            format = "list"
+          )
+
+          # Cache the results
+          annotations_cache[[dataset_name]] <- records
+
+        }, error = function(e) {
+          cli::cli_alert_warning("Failed to get annotations for {dataset_name}: {conditionMessage(e)}")
+        })
+      }
+
+      # Apply filters first, then add annotation columns
+      annotated_table <- list()
+
+      for (row in table_data) {
+        if (!is.list(row)) next
+
+        # Check if row passes all filters
+        passes_filter <- TRUE
+
+        if (!is.null(filter)) {
+          for (filter_spec in filter) {
+            dataset_name <- filter_spec[[1]]
+            field_name <- filter_spec[[2]]
+            allowed_values <- filter_spec[[3]]
+
+            dataset_index <- which(route == dataset_name)[1]
+
+            if (length(row) >= dataset_index) {
+              id_value <- as.character(row[[dataset_index]])
+
+              if (!is.null(annotations_cache[[dataset_name]]) &&
+                  !is.null(annotations_cache[[dataset_name]][[id_value]])) {
+                annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
+
+                if (is.list(annotation_value)) {
+                  # Check if any value matches
+                  if (!any(as.character(unlist(annotation_value)) %in% allowed_values)) {
+                    passes_filter <- FALSE
+                    break
+                  }
+                } else {
+                  if (!as.character(annotation_value) %in% allowed_values) {
+                    passes_filter <- FALSE
+                    break
+                  }
+                }
+              } else {
+                passes_filter <- FALSE
+                break
+              }
+            } else {
+              passes_filter <- FALSE
+              break
+            }
+          }
+        }
+
+        if (!passes_filter) {
+          next
+        }
+
+        # Add annotation columns
+        if (!is.null(annotate)) {
+          # Build a mapping of dataset_index -> list of annotation values
+          annotations_to_insert <- list()
+
+          for (ann_spec in annotate) {
+            dataset_name <- ann_spec[[1]]
+            field_name <- ann_spec[[2]]
+
+            dataset_index <- which(route == dataset_name)[1]
+
+            if (!dataset_index %in% names(annotations_to_insert)) {
+              annotations_to_insert[[as.character(dataset_index)]] <- list()
+            }
+
+            if (length(row) >= dataset_index) {
+              id_value <- as.character(row[[dataset_index]])
+
+              if (!is.null(annotations_cache[[dataset_name]]) &&
+                  !is.null(annotations_cache[[dataset_name]][[id_value]])) {
+                annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
+
+                # Handle list values
+                if (is.list(annotation_value) && length(annotation_value) > 0) {
+                  annotation_value <- paste(unlist(annotation_value), collapse = ", ")
+                } else if (is.null(annotation_value)) {
+                  annotation_value <- ""
+                }
+
+                annotations_to_insert[[as.character(dataset_index)]][[length(annotations_to_insert[[as.character(dataset_index)]]) + 1]] <- as.character(annotation_value)
+              } else {
+                annotations_to_insert[[as.character(dataset_index)]][[length(annotations_to_insert[[as.character(dataset_index)]]) + 1]] <- ""
+              }
+            } else {
+              annotations_to_insert[[as.character(dataset_index)]][[length(annotations_to_insert[[as.character(dataset_index)]]) + 1]] <- ""
+            }
+          }
+
+          # Build new row by inserting annotations after their dataset columns
+          new_row <- list()
+          for (i in seq_along(row)) {
+            new_row[[length(new_row) + 1]] <- row[[i]]
+
+            # Insert annotations for this column if any
+            idx_key <- as.character(i)
+            if (idx_key %in% names(annotations_to_insert)) {
+              for (ann_val in annotations_to_insert[[idx_key]]) {
+                new_row[[length(new_row) + 1]] <- ann_val
+              }
+            }
+          }
+
+          annotated_table[[length(annotated_table) + 1]] <- new_row
+        } else {
+          annotated_table[[length(annotated_table) + 1]] <- row
+        }
+      }
+
+      # Update response with annotated results
+      if (is.list(response) && "results" %in% names(response)) {
+        response$results <- annotated_table
+        return(response)
+      } else {
+        return(annotated_table)
+      }
     }
   )
 )
