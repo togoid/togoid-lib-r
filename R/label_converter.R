@@ -113,8 +113,28 @@ LabelConverter <- R6::R6Class(
         # Use PubDictionaries
         if (is.null(dictionaries)) {
           label_resolver <- dataset_config$label_resolver %||% list()
-          dictionaries <- label_resolver$dictionaries %||%
-            paste0("togoid_", dataset, "_label")
+          dict_list <- label_resolver$dictionaries %||% list()
+
+          if (is.list(dict_list) && length(dict_list) > 0 && is.list(dict_list[[1]])) {
+            # dict_list is a list of objects with 'dictionary' and 'label_type' fields
+            if (!is.null(label_types)) {
+              # Filter by user-specified label_types
+              if (is.character(label_types) && length(label_types) == 1 && grepl(",", label_types)) {
+                requested_types <- trimws(strsplit(label_types, ",")[[1]])
+              } else {
+                requested_types <- as.character(label_types)
+              }
+              dict_list <- Filter(function(d) {
+                d_type <- d$label_type %||% ""
+                d_type %in% requested_types
+              }, dict_list)
+            }
+            dictionaries <- paste(sapply(dict_list, function(d) d$dictionary), collapse = ",")
+          } else if (is.character(dict_list)) {
+            dictionaries <- dict_list
+          } else {
+            dictionaries <- paste0("togoid_", dataset, "_label")
+          }
         }
 
         if (self$verbose) {
@@ -197,7 +217,9 @@ LabelConverter <- R6::R6Class(
               results[[length(results) + 1]] <- list(
                 input = label,
                 match_type = "Unmatched",
-                identifier = NA_character_
+                identifier = NA_character_,
+                score = NA_real_,
+                dictionary = NA_character_
               )
             } else {
               # Add all results, not just the first one
@@ -282,7 +304,9 @@ LabelConverter <- R6::R6Class(
               results[[length(results) + 1]] <- list(
                 input = label,
                 match_type = "Unmatched",
-                identifier = NA_character_
+                symbol = NA_character_,
+                identifier = NA_character_,
+                taxonomy = NA_character_
               )
             } else {
               # Add all matches, not just the first one
@@ -307,8 +331,9 @@ LabelConverter <- R6::R6Class(
             results[[length(results) + 1]] <<- list(
               input = label,
               match_type = "Error",
+              symbol = NA_character_,
               identifier = NA_character_,
-              error = err_msg
+              taxonomy = NA_character_
             )
           }
         }
@@ -370,10 +395,11 @@ LabelConverter <- R6::R6Class(
         return(data.frame())
       }
 
-      # Convert list of lists to data.frame
-      df <- do.call(rbind, lapply(results, function(result) {
+      # Convert list of lists to data.frame using bind_rows for robustness
+      dfs <- lapply(results, function(result) {
         as.data.frame(result, stringsAsFactors = FALSE)
-      }))
+      })
+      df <- dplyr::bind_rows(dfs)
 
       rownames(df) <- NULL
       return(df)

@@ -4,7 +4,7 @@
 #'
 #' @param ids Character vector of source IDs
 #' @param route Character vector of database names forming the conversion route
-#' @param format Output format: "json", "list", "table", "dataframe", "tibble"
+#' @param format Output format: "dataframe" (default), "tibble", or "list"
 #' @param ... Additional parameters passed to TogoIDConverter$convert()
 #'
 #' @return Converted IDs in specified format
@@ -138,9 +138,11 @@ togoid_list_fields <- function(dataset) {
 #'   taxonomy = "9606"
 #' )
 #' }
-togoid_label2id <- function(labels, dataset, taxonomy = NULL, format = "dataframe", ...) {
+togoid_label2id <- function(labels, dataset, taxonomy = NULL, label_types = NULL,
+                            format = "dataframe", ...) {
   converter <- LabelConverter$new()
-  converter$convert(labels = labels, dataset = dataset, taxonomy = taxonomy, format = format, ...)
+  converter$convert(labels = labels, dataset = dataset, taxonomy = taxonomy,
+                    label_types = label_types, format = format, ...)
 }
 
 #' Search databases by name

@@ -73,7 +73,7 @@ TogoIDConverter <- R6::R6Class(
       }
 
       # Convert to requested format
-      return(private$format_response(response, format, route, ids))
+      return(private$format_response(response, format, route, ids, annotate))
     },
 
     #' @description
@@ -85,7 +85,7 @@ TogoIDConverter <- R6::R6Class(
     #' @param format Output format
     #'
     #' @return Ortholog mapping in specified format
-    get_ortholog = function(ids, route, target_taxids, format = "table") {
+    get_ortholog = function(ids, route, target_taxids, format = "dataframe") {
 
       if (length(route) != 2) {
         cli::cli_abort("Route for ortholog must have exactly 2 databases")
@@ -94,28 +94,68 @@ TogoIDConverter <- R6::R6Class(
       # Build round-trip route: source -> intermediate -> source -> taxonomy
       full_route <- c(route[1], route[2], route[1], "taxonomy")
 
-      # Convert with full route
-      result <- self$convert(
-        ids = ids,
-        route = full_route,
-        format = "table",
-        report = "full"
-      )
-
-      # Filter by target taxonomy IDs
-      if (is.list(result) && length(result) > 0) {
-        # Result is a list of vectors/lists
-        filtered <- Filter(function(row) {
-          if (length(row) >= 4) {
-            return(as.character(row[[4]]) %in% target_taxids)
-          }
-          return(FALSE)
-        }, result)
-
-        return(private$format_ortholog_result(filtered, format))
+      # Internal function to get raw table data from API
+      get_table_data <- function(id_vec) {
+        params <- list(
+          ids = paste(id_vec, collapse = ","),
+          route = paste(full_route, collapse = ","),
+          report = "full"
+        )
+        response <- make_request(
+          base_url = self$api_base_url,
+          endpoint = "convert",
+          method = "GET",
+          params = params
+        )
+        private$convert_to_table(response)
       }
 
-      return(result)
+      # Try batch conversion, fall back to individual IDs on error
+      table_data <- tryCatch({
+        get_table_data(ids)
+      }, error = function(e) {
+        # Fallback: convert one ID at a time
+        all_results <- list()
+        for (id in ids) {
+          single <- tryCatch({
+            get_table_data(id)
+          }, error = function(e2) {
+            list()
+          })
+          all_results <- c(all_results, single)
+        }
+        all_results
+      })
+
+      # Track which input IDs had any API results
+      all_source_ids <- character()
+      for (row in table_data) {
+        if (is.list(row) && length(row) >= 1) {
+          all_source_ids <- c(all_source_ids, as.character(row[[1]]))
+        }
+      }
+
+      # Filter by target taxonomy IDs
+      filtered <- list()
+      found_ids <- character()
+      if (length(table_data) > 0) {
+        for (row in table_data) {
+          if (is.list(row) && length(row) >= 4) {
+            if (as.character(row[[4]]) %in% target_taxids) {
+              filtered[[length(filtered) + 1]] <- row
+              found_ids <- c(found_ids, as.character(row[[1]]))
+            }
+          }
+        }
+      }
+
+      # Add NA rows for IDs that had no conversion results at all
+      missing_ids <- setdiff(ids, unique(all_source_ids))
+      for (mid in missing_ids) {
+        filtered[[length(filtered) + 1]] <- list(mid, NA_character_, NA_character_, NA_character_)
+      }
+
+      return(private$format_ortholog_result(filtered, format))
     },
 
     #' @description
@@ -322,9 +362,13 @@ TogoIDConverter <- R6::R6Class(
           src <- parts[1]
           dst <- parts[2]
 
-          # If source matches, add target to list
+          # If source matches (forward link), add target to list
           if (src == source) {
             targets <- c(targets, dst)
+          }
+          # If destination matches (reverse link), add source to list
+          if (dst == source) {
+            targets <- c(targets, src)
           }
         }
       }
@@ -343,16 +387,16 @@ TogoIDConverter <- R6::R6Class(
     #' @param ids Source IDs
     #'
     #' @return Formatted response
-    format_response = function(response, format, route, ids) {
+    format_response = function(response, format, route, ids, annotate = NULL) {
       format <- normalize_format(format)
 
+      expanded_route <- private$build_expanded_route(route, annotate)
+
       switch(format,
-        "json" = return(response),
         "list" = return(private$convert_to_list(response, route, ids)),
-        "table" = return(private$convert_to_table(response)),
-        "dataframe" = return(private$convert_to_dataframe(response, route)),
-        "tibble" = return(private$convert_to_tibble(response, route)),
-        return(response) # default
+        "dataframe" = return(private$convert_to_dataframe(response, route, expanded_route)),
+        "tibble" = return(private$convert_to_tibble(response, route, expanded_route)),
+        return(private$convert_to_dataframe(response, route, expanded_route)) # default
       )
     },
 
@@ -389,19 +433,19 @@ TogoIDConverter <- R6::R6Class(
     #' @param route Conversion route
     #'
     #' @return data.frame
-    convert_to_dataframe = function(response, route) {
+    convert_to_dataframe = function(response, route, expanded_route = NULL) {
       table_data <- private$convert_to_table(response)
 
       if (length(table_data) == 0) {
-        # Return empty dataframe with route column names
-        empty_df <- as.data.frame(matrix(ncol = length(route), nrow = 0))
-        colnames(empty_df) <- route
+        col_names <- if (!is.null(expanded_route)) expanded_route else route
+        empty_df <- as.data.frame(matrix(ncol = length(col_names), nrow = 0))
+        colnames(empty_df) <- col_names
         return(empty_df)
       }
 
       # Convert to data.frame
       if (is.list(table_data) && length(table_data) > 0) {
-        # Replace NULL values with NA and determine the maximum length across all rows
+        # Replace NULL values with NA
         table_data_clean <- lapply(table_data, function(row) {
           lapply(row, function(elem) {
             if (is.null(elem)) NA_character_ else as.character(elem)
@@ -425,15 +469,15 @@ TogoIDConverter <- R6::R6Class(
           as.data.frame(t(unlist(row)), stringsAsFactors = FALSE)
         }))
 
-        # Create column names based on route
+        # Create column names: prefer expanded_route if it matches
         ncols <- ncol(df)
-        if (ncols == length(route)) {
+        if (!is.null(expanded_route) && ncols == length(expanded_route)) {
+          col_names <- expanded_route
+        } else if (ncols == length(route)) {
           col_names <- route
         } else if (ncols < length(route)) {
-          # Use last N dataset names from route
           col_names <- route[(length(route) - ncols + 1):length(route)]
         } else {
-          # More columns than route - use route names + generic names
           col_names <- c(route, paste0("col_", seq_len(ncols - length(route))))
         }
 
@@ -451,8 +495,8 @@ TogoIDConverter <- R6::R6Class(
     #' @param route Conversion route
     #'
     #' @return tibble
-    convert_to_tibble = function(response, route) {
-      df <- private$convert_to_dataframe(response, route)
+    convert_to_tibble = function(response, route, expanded_route = NULL) {
+      df <- private$convert_to_dataframe(response, route, expanded_route)
       return(tibble::as_tibble(df))
     },
 
@@ -491,6 +535,39 @@ TogoIDConverter <- R6::R6Class(
       }
 
       return(filtered)
+    },
+
+    #' Build expanded route with annotation column names
+    #'
+    #' @param route Original conversion route
+    #' @param annotate Annotation specifications
+    #'
+    #' @return Expanded route vector with annotation column names inserted
+    build_expanded_route = function(route, annotate) {
+      if (is.null(annotate)) return(route)
+
+      # Group annotations by position in route
+      insertions <- list()
+      for (ann_spec in annotate) {
+        dataset_name <- ann_spec[[1]]
+        field_name <- ann_spec[[2]]
+        pos <- which(route == dataset_name)[1]
+        if (is.na(pos)) next
+        key <- as.character(pos)
+        if (is.null(insertions[[key]])) insertions[[key]] <- character()
+        insertions[[key]] <- c(insertions[[key]], paste0(dataset_name, ".", field_name))
+      }
+
+      # Build expanded route
+      expanded <- character()
+      for (i in seq_along(route)) {
+        expanded <- c(expanded, route[i])
+        key <- as.character(i)
+        if (key %in% names(insertions)) {
+          expanded <- c(expanded, insertions[[key]])
+        }
+      }
+      return(expanded)
     },
 
     #' Add annotations to conversion results
@@ -559,9 +636,12 @@ TogoIDConverter <- R6::R6Class(
 
         for (row in table_data) {
           if (is.list(row) && length(row) >= dataset_index) {
-            id_value <- as.character(row[[dataset_index]])
-            if (!is.na(id_value) && id_value != "") {
-              ids_to_annotate <- c(ids_to_annotate, id_value)
+            elem <- row[[dataset_index]]
+            if (!is.null(elem) && length(elem) > 0) {
+              id_value <- as.character(elem)
+              if (!is.na(id_value) && nchar(id_value) > 0) {
+                ids_to_annotate <- c(ids_to_annotate, id_value)
+              }
             }
           }
         }
@@ -607,28 +687,29 @@ TogoIDConverter <- R6::R6Class(
 
             dataset_index <- which(route == dataset_name)[1]
 
-            if (length(row) >= dataset_index) {
-              id_value <- as.character(row[[dataset_index]])
+            elem <- if (length(row) >= dataset_index) row[[dataset_index]] else NULL
+            id_value <- NULL
+            if (!is.null(elem) && length(elem) > 0) {
+              id_value <- as.character(elem)
+              if (is.na(id_value) || nchar(id_value) == 0) id_value <- NULL
+            }
 
-              if (!is.null(annotations_cache[[dataset_name]]) &&
-                  !is.null(annotations_cache[[dataset_name]][[id_value]])) {
-                annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
+            if (!is.null(id_value) &&
+                !is.null(annotations_cache[[dataset_name]]) &&
+                !is.null(annotations_cache[[dataset_name]][[id_value]])) {
+              annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
 
-                if (is.list(annotation_value)) {
-                  # Check if any value matches
-                  if (!any(as.character(unlist(annotation_value)) %in% allowed_values)) {
-                    passes_filter <- FALSE
-                    break
-                  }
-                } else {
-                  if (!as.character(annotation_value) %in% allowed_values) {
-                    passes_filter <- FALSE
-                    break
-                  }
+              if (is.list(annotation_value)) {
+                # Check if any value matches
+                if (!any(as.character(unlist(annotation_value)) %in% allowed_values)) {
+                  passes_filter <- FALSE
+                  break
                 }
               } else {
-                passes_filter <- FALSE
-                break
+                if (!as.character(annotation_value) %in% allowed_values) {
+                  passes_filter <- FALSE
+                  break
+                }
               }
             } else {
               passes_filter <- FALSE
@@ -656,26 +737,29 @@ TogoIDConverter <- R6::R6Class(
               annotations_to_insert[[as.character(dataset_index)]] <- list()
             }
 
-            if (length(row) >= dataset_index) {
-              id_value <- as.character(row[[dataset_index]])
+            idx_key <- as.character(dataset_index)
+            elem <- if (length(row) >= dataset_index) row[[dataset_index]] else NULL
+            id_value <- NULL
+            if (!is.null(elem) && length(elem) > 0) {
+              id_value <- as.character(elem)
+              if (is.na(id_value) || nchar(id_value) == 0) id_value <- NULL
+            }
 
-              if (!is.null(annotations_cache[[dataset_name]]) &&
-                  !is.null(annotations_cache[[dataset_name]][[id_value]])) {
-                annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
+            if (!is.null(id_value) &&
+                !is.null(annotations_cache[[dataset_name]]) &&
+                !is.null(annotations_cache[[dataset_name]][[id_value]])) {
+              annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
 
-                # Handle list values
-                if (is.list(annotation_value) && length(annotation_value) > 0) {
-                  annotation_value <- paste(unlist(annotation_value), collapse = ", ")
-                } else if (is.null(annotation_value)) {
-                  annotation_value <- ""
-                }
-
-                annotations_to_insert[[as.character(dataset_index)]][[length(annotations_to_insert[[as.character(dataset_index)]]) + 1]] <- as.character(annotation_value)
-              } else {
-                annotations_to_insert[[as.character(dataset_index)]][[length(annotations_to_insert[[as.character(dataset_index)]]) + 1]] <- ""
+              # Handle list values
+              if (is.list(annotation_value) && length(annotation_value) > 0) {
+                annotation_value <- paste(unlist(annotation_value), collapse = ", ")
+              } else if (is.null(annotation_value)) {
+                annotation_value <- NA_character_
               }
+
+              annotations_to_insert[[idx_key]][[length(annotations_to_insert[[idx_key]]) + 1]] <- as.character(annotation_value)
             } else {
-              annotations_to_insert[[as.character(dataset_index)]][[length(annotations_to_insert[[as.character(dataset_index)]]) + 1]] <- ""
+              annotations_to_insert[[idx_key]][[length(annotations_to_insert[[idx_key]]) + 1]] <- NA_character_
             }
           }
 
