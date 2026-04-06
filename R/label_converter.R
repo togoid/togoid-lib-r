@@ -67,6 +67,17 @@ LabelConverter <- R6::R6Class(
 
       dataset_config <- datasets[[dataset]]
 
+      # Check if taxonomy is required
+      label_resolver <- dataset_config$label_resolver %||% list()
+      taxonomy_required <- isTRUE(label_resolver$taxonomy)
+
+      if (taxonomy_required && is.null(taxonomy)) {
+        cli::cli_abort(c(
+          "Taxonomy is required for dataset: {dataset}",
+          "i" = "Please specify the 'taxonomy' parameter (e.g., taxonomy = '9606' for human)"
+        ))
+      }
+
       # Check if SPARQList should be used
       use_sparqlist <- private$should_use_sparqlist(dataset_config)
 
@@ -102,8 +113,28 @@ LabelConverter <- R6::R6Class(
         # Use PubDictionaries
         if (is.null(dictionaries)) {
           label_resolver <- dataset_config$label_resolver %||% list()
-          dictionaries <- label_resolver$dictionaries %||%
-            paste0("togoid_", dataset, "_label")
+          dict_list <- label_resolver$dictionaries %||% list()
+
+          if (is.list(dict_list) && length(dict_list) > 0 && is.list(dict_list[[1]])) {
+            # dict_list is a list of objects with 'dictionary' and 'label_type' fields
+            if (!is.null(label_types)) {
+              # Filter by user-specified label_types
+              if (is.character(label_types) && length(label_types) == 1 && grepl(",", label_types)) {
+                requested_types <- trimws(strsplit(label_types, ",")[[1]])
+              } else {
+                requested_types <- as.character(label_types)
+              }
+              dict_list <- Filter(function(d) {
+                d_type <- d$label_type %||% ""
+                d_type %in% requested_types
+              }, dict_list)
+            }
+            dictionaries <- paste(sapply(dict_list, function(d) d$dictionary), collapse = ",")
+          } else if (is.character(dict_list)) {
+            dictionaries <- dict_list
+          } else {
+            dictionaries <- paste0("togoid_", dataset, "_label")
+          }
         }
 
         if (self$verbose) {
@@ -145,15 +176,16 @@ LabelConverter <- R6::R6Class(
         cli::cli_alert_info("Dictionaries: {dictionaries}")
       }
 
-      # Build params
+      # Build params - all values must be character
       params <- list(
-        labels = paste(labels, collapse = "|"),
-        dictionaries = dictionaries,
-        verbose = "true"
+        labels = as.character(paste(labels, collapse = "|")),
+        dictionaries = as.character(dictionaries),
+        verbose = as.character("true"),
+        use_ngram_similarity = as.character("true")
       )
 
       if (!is.null(tags)) {
-        params$tags <- tags
+        params$tags <- as.character(tags)
       }
       if (!is.null(threshold)) {
         params$threshold <- as.character(threshold)
@@ -165,7 +197,7 @@ LabelConverter <- R6::R6Class(
       tryCatch(
         {
           req <- httr2::request(url)
-          req <- httr2::req_url_query(req, !!!params)
+          req <- httr2::req_url_query(req, .multi = "comma", !!!params)
           req <- httr2::req_timeout(req, 30)
 
           resp <- httr2::req_perform(req)
@@ -185,18 +217,21 @@ LabelConverter <- R6::R6Class(
               results[[length(results) + 1]] <- list(
                 input = label,
                 match_type = "Unmatched",
-                identifier = NA_character_
+                identifier = NA_character_,
+                score = NA_real_,
+                dictionary = NA_character_
               )
             } else {
-              # Take first result
-              first_result <- table_base_data[[1]]
-              results[[length(results) + 1]] <- list(
-                input = label,
-                match_type = "PubDictionaries",
-                identifier = first_result$identifier %||% NA_character_,
-                score = first_result$score %||% NA_real_,
-                dictionary = first_result$dictionary %||% NA_character_
-              )
+              # Add all results, not just the first one
+              for (result_item in table_base_data) {
+                results[[length(results) + 1]] <- list(
+                  input = label,
+                  match_type = "PubDictionaries",
+                  identifier = result_item$identifier %||% NA_character_,
+                  score = result_item$score %||% NA_real_,
+                  dictionary = result_item$dictionary %||% NA_character_
+                )
+              }
             }
           }
 
@@ -269,19 +304,21 @@ LabelConverter <- R6::R6Class(
               results[[length(results) + 1]] <- list(
                 input = label,
                 match_type = "Unmatched",
-                identifier = NA_character_
+                symbol = NA_character_,
+                identifier = NA_character_,
+                taxonomy = NA_character_
               )
             } else {
-              # Take first match
-              first_match <- label_data[[1]]
-
-              results[[length(results) + 1]] <- list(
-                input = label,
-                match_type = first_match$label_type %||% "exact",
-                symbol = first_match$preferred %||% NA_character_,
-                identifier = first_match$identifier %||% NA_character_,
-                taxonomy = taxonomy
-              )
+              # Add all matches, not just the first one
+              for (match in label_data) {
+                results[[length(results) + 1]] <- list(
+                  input = label,
+                  match_type = match$label_type %||% "exact",
+                  symbol = match$preferred %||% NA_character_,
+                  identifier = match$identifier %||% NA_character_,
+                  taxonomy = taxonomy
+                )
+              }
             }
           }
         },
@@ -294,8 +331,9 @@ LabelConverter <- R6::R6Class(
             results[[length(results) + 1]] <<- list(
               input = label,
               match_type = "Error",
+              symbol = NA_character_,
               identifier = NA_character_,
-              error = err_msg
+              taxonomy = NA_character_
             )
           }
         }
@@ -357,10 +395,11 @@ LabelConverter <- R6::R6Class(
         return(data.frame())
       }
 
-      # Convert list of lists to data.frame
-      df <- do.call(rbind, lapply(results, function(result) {
+      # Convert list of lists to data.frame using bind_rows for robustness
+      dfs <- lapply(results, function(result) {
         as.data.frame(result, stringsAsFactors = FALSE)
-      }))
+      })
+      df <- dplyr::bind_rows(dfs)
 
       rownames(df) <- NULL
       return(df)

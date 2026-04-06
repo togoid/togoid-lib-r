@@ -86,16 +86,16 @@ get_env_var <- function(var_name, default) {
 normalize_format <- function(format) {
   format <- tolower(format)
   switch(format,
-    "json" = "json",
+    "json" = "list",
     "dict" = "list",
     "list" = "list",
-    "table" = "table",
+    "table" = "dataframe",
     "dataframe" = "dataframe",
     "df" = "dataframe",
     "tibble" = "tibble",
-    "csv" = "csv",
-    "tsv" = "tsv",
-    "json" # default
+    "csv" = "dataframe",
+    "tsv" = "dataframe",
+    "dataframe" # default
   )
 }
 
