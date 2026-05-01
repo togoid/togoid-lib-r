@@ -443,50 +443,57 @@ TogoIDConverter <- R6::R6Class(
         return(empty_df)
       }
 
-      # Convert to data.frame
-      if (is.list(table_data) && length(table_data) > 0) {
-        # Replace NULL values with NA
-        table_data_clean <- lapply(table_data, function(row) {
-          lapply(row, function(elem) {
-            if (is.null(elem)) NA_character_ else as.character(elem)
-          })
-        })
-
-        # Determine the maximum length across all rows
-        max_length <- max(sapply(table_data_clean, length))
-
-        # Pad all rows to the maximum length
-        table_data_padded <- lapply(table_data_clean, function(row) {
-          if (length(row) < max_length) {
-            c(row, rep(list(NA_character_), max_length - length(row)))
-          } else {
-            row
-          }
-        })
-
-        # Convert each row to a data.frame row
-        df <- do.call(rbind, lapply(table_data_padded, function(row) {
-          as.data.frame(t(unlist(row)), stringsAsFactors = FALSE)
-        }))
-
-        # Create column names: prefer expanded_route if it matches
-        ncols <- ncol(df)
-        if (!is.null(expanded_route) && ncols == length(expanded_route)) {
-          col_names <- expanded_route
-        } else if (ncols == length(route)) {
-          col_names <- route
-        } else if (ncols < length(route)) {
-          col_names <- route[(length(route) - ncols + 1):length(route)]
-        } else {
-          col_names <- c(route, paste0("col_", seq_len(ncols - length(route))))
-        }
-
-        colnames(df) <- col_names
-        rownames(df) <- NULL
-        return(df)
+      if (!is.list(table_data) || length(table_data) == 0) {
+        return(data.frame())
       }
 
-      return(data.frame())
+      # Determine the maximum length across all rows
+      max_length <- max(vapply(table_data, length, integer(1)))
+
+      # Choose column names
+      if (!is.null(expanded_route) && max_length == length(expanded_route)) {
+        col_names <- expanded_route
+      } else if (max_length == length(route)) {
+        col_names <- route
+      } else if (max_length < length(route)) {
+        col_names <- route[(length(route) - max_length + 1):length(route)]
+      } else {
+        col_names <- c(route, paste0("col_", seq_len(max_length - length(route))))
+      }
+
+      # Build columns one by one, detecting list-typed annotation values
+      df <- data.frame(row.names = seq_along(table_data))
+      for (col_idx in seq_len(max_length)) {
+        col_values <- lapply(table_data, function(row) {
+          if (col_idx > length(row)) return(NA_character_)
+          elem <- row[[col_idx]]
+          if (is.null(elem)) return(NA_character_)
+          if (is.list(elem)) {
+            if (length(elem) == 0) return(NA_character_)
+            return(as.character(unlist(elem)))
+          }
+          if (length(elem) == 0) return(NA_character_)
+          if (length(elem) == 1) {
+            v <- as.character(elem)
+            if (is.na(v)) return(NA_character_)
+            return(v)
+          }
+          return(as.character(elem))
+        })
+
+        # If any cell carries multiple values, keep as list-column (vectors per cell)
+        is_listy <- any(vapply(col_values, function(x) length(x) > 1, logical(1)))
+        if (is_listy) {
+          df[[col_names[col_idx]]] <- col_values
+        } else {
+          df[[col_names[col_idx]]] <- vapply(col_values, function(x) {
+            if (length(x) == 0) NA_character_ else as.character(x[[1]])
+          }, character(1))
+        }
+      }
+
+      rownames(df) <- NULL
+      return(df)
     },
 
     #' Convert response to tibble
@@ -750,14 +757,21 @@ TogoIDConverter <- R6::R6Class(
                 !is.null(annotations_cache[[dataset_name]][[id_value]])) {
               annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
 
-              # Handle list values
-              if (is.list(annotation_value) && length(annotation_value) > 0) {
-                annotation_value <- paste(unlist(annotation_value), collapse = ", ")
-              } else if (is.null(annotation_value)) {
+              # Preserve list values as character vectors so dataframe gets list-columns.
+              # Missing fields become NA (rather than triggering an error downstream).
+              if (is.null(annotation_value)) {
                 annotation_value <- NA_character_
+              } else if (is.list(annotation_value)) {
+                if (length(annotation_value) == 0) {
+                  annotation_value <- NA_character_
+                } else {
+                  annotation_value <- as.character(unlist(annotation_value))
+                }
+              } else {
+                annotation_value <- as.character(annotation_value)
               }
 
-              annotations_to_insert[[idx_key]][[length(annotations_to_insert[[idx_key]]) + 1]] <- as.character(annotation_value)
+              annotations_to_insert[[idx_key]][[length(annotations_to_insert[[idx_key]]) + 1]] <- annotation_value
             } else {
               annotations_to_insert[[idx_key]][[length(annotations_to_insert[[idx_key]]) + 1]] <- NA_character_
             }

@@ -75,27 +75,34 @@ get_env_var <- function(var_name, default) {
   return(value)
 }
 
-#' Convert Python-style format to R
+#' Normalize format string to R output type
 #'
-#' Converts different format names to consistent R output types
+#' Validates the requested output format and converts it to a canonical name.
+#' Python-specific formats ("json", "table") are rejected with an error so that
+#' R users use the R-native names ("list", "dataframe", "tibble").
 #'
-#' @param format Format name ("json", "dict", "table", "dataframe", "csv", "tsv")
+#' @param format Format name ("list", "dataframe", "tibble")
 #'
 #' @return Standardized format name
 #' @keywords internal
 normalize_format <- function(format) {
   format <- tolower(format)
+  if (format %in% c("json", "table")) {
+    cli::cli_abort(c(
+      "Unsupported format: {format}",
+      "i" = "Use one of: \"list\", \"dataframe\", \"tibble\"."
+    ))
+  }
   switch(format,
-    "json" = "list",
     "dict" = "list",
     "list" = "list",
-    "table" = "dataframe",
     "dataframe" = "dataframe",
     "df" = "dataframe",
     "tibble" = "tibble",
-    "csv" = "dataframe",
-    "tsv" = "dataframe",
-    "dataframe" # default
+    cli::cli_abort(c(
+      "Unsupported format: {format}",
+      "i" = "Use one of: \"list\", \"dataframe\", \"tibble\"."
+    ))
   )
 }
 

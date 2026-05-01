@@ -46,7 +46,9 @@ LabelConverter <- R6::R6Class(
     #' @param dataset Dataset name (e.g., "ncbigene", "chebi")
     #' @param taxonomy Taxonomy ID (e.g., "9606" for human)
     #' @param threshold Matching threshold for PubDictionaries (0-1)
-    #' @param label_types Label types override (e.g., "symbol,synonym")
+    #' @param label_types Label types override as character vector
+    #'   (e.g., c("symbol", "synonym")). Single comma-separated strings are
+    #'   also accepted for backward compatibility but discouraged.
     #' @param dictionaries Dictionaries override for PubDictionaries
     #' @param format Output format: "list" or "dataframe" (default: "dataframe")
     #'
@@ -91,10 +93,14 @@ LabelConverter <- R6::R6Class(
           # Extract label_type values from label_types list
           lt_list <- label_resolver$label_types %||% list()
           if (length(lt_list) > 0) {
-            label_type_values <- sapply(lt_list, function(x) x$label_type)
-            label_types <- paste(label_type_values, collapse = ",")
+            label_types <- vapply(lt_list, function(x) x$label_type, character(1))
           } else {
-            label_types <- "symbol,synonym"
+            label_types <- c("symbol", "synonym")
+          }
+        } else {
+          # Accept comma-joined strings for backward compatibility but split them
+          if (length(label_types) == 1 && grepl(",", label_types)) {
+            label_types <- trimws(strsplit(label_types, ",")[[1]])
           }
         }
 
@@ -111,27 +117,45 @@ LabelConverter <- R6::R6Class(
 
       } else {
         # Use PubDictionaries
-        if (is.null(dictionaries)) {
-          label_resolver <- dataset_config$label_resolver %||% list()
-          dict_list <- label_resolver$dictionaries %||% list()
+        # Cache dict_list for later (used to map identifiers to label / preferred dict)
+        label_resolver <- dataset_config$label_resolver %||% list()
+        dict_list <- label_resolver$dictionaries %||% list()
 
+        # Build dictionary -> label map and find preferred dictionary
+        dictionary_to_label <- list()
+        preferred_dictionary <- NULL
+        preferred_label_column <- "name"
+        if (is.list(dict_list) && length(dict_list) > 0 && is.list(dict_list[[1]])) {
+          for (d in dict_list) {
+            dname <- d$dictionary %||% ""
+            if (nchar(dname) == 0) next
+            dictionary_to_label[[dname]] <- d$label %||% dname
+            if (isTRUE(d$preferred)) {
+              preferred_dictionary <- dname
+              preferred_label_column <- d$label %||% dname
+            }
+          }
+        }
+
+        if (is.null(dictionaries)) {
           if (is.list(dict_list) && length(dict_list) > 0 && is.list(dict_list[[1]])) {
+            filtered_dicts <- dict_list
             # dict_list is a list of objects with 'dictionary' and 'label_type' fields
             if (!is.null(label_types)) {
-              # Filter by user-specified label_types
+              # Accept either a vector or a single comma-joined string
               if (is.character(label_types) && length(label_types) == 1 && grepl(",", label_types)) {
                 requested_types <- trimws(strsplit(label_types, ",")[[1]])
               } else {
                 requested_types <- as.character(label_types)
               }
-              dict_list <- Filter(function(d) {
+              filtered_dicts <- Filter(function(d) {
                 d_type <- d$label_type %||% ""
                 d_type %in% requested_types
               }, dict_list)
             }
-            dictionaries <- paste(sapply(dict_list, function(d) d$dictionary), collapse = ",")
+            dictionaries <- paste(sapply(filtered_dicts, function(d) d$dictionary), collapse = ",")
           } else if (is.character(dict_list)) {
-            dictionaries <- dict_list
+            dictionaries <- paste(dict_list, collapse = ",")
           } else {
             dictionaries <- paste0("togoid_", dataset, "_label")
           }
@@ -145,7 +169,10 @@ LabelConverter <- R6::R6Class(
           labels = labels,
           dictionaries = dictionaries,
           tags = taxonomy,
-          threshold = threshold
+          threshold = threshold,
+          dictionary_to_label = dictionary_to_label,
+          preferred_dictionary = preferred_dictionary,
+          preferred_label_column = preferred_label_column
         )
       }
 
@@ -160,16 +187,26 @@ LabelConverter <- R6::R6Class(
     #' @description
     #' Convert labels using PubDictionaries API
     #'
+    #' Produces output in the same shape as the TogoID Web UI:
+    #' columns are `input`, `match_type` (the human-readable dictionary
+    #' label such as "Name" / "Exact synonym"), `<preferred_label_column>`
+    #' (canonical label resolved through the preferred dictionary),
+    #' `score`, `identifier`.
+    #'
     #' @param labels Character vector of labels
     #' @param dictionaries Comma-separated dictionary names
     #' @param tags Taxonomy tags
     #' @param threshold Matching threshold (0-1)
-    #' @param preferred_dictionary Preferred dictionary
+    #' @param dictionary_to_label Named list mapping dictionary id -> human-readable label
+    #' @param preferred_dictionary Dictionary id of the preferred (canonical-label) dictionary
+    #' @param preferred_label_column Column name to use for the canonical label
     #'
     #' @return List of result lists
     convert_pubdictionaries = function(labels, dictionaries, tags = NULL,
                                        threshold = 0.5,
-                                       preferred_dictionary = NULL) {
+                                       dictionary_to_label = list(),
+                                       preferred_dictionary = NULL,
+                                       preferred_label_column = "name") {
 
       if (self$verbose) {
         cli::cli_alert_info("Converting {length(labels)} labels using PubDictionaries")
@@ -203,6 +240,49 @@ LabelConverter <- R6::R6Class(
           resp <- httr2::req_perform(req)
           find_ids_data <- httr2::resp_body_json(resp)
 
+          # Collect identifiers from non-preferred dictionaries to look up canonical labels
+          synonym_identifiers <- character()
+          if (!is.null(preferred_dictionary)) {
+            for (label in labels) {
+              for (item in (find_ids_data[[label]] %||% list())) {
+                d <- item$dictionary %||% ""
+                if (nchar(d) > 0 && d != preferred_dictionary) {
+                  synonym_identifiers <- c(synonym_identifiers, as.character(item$identifier %||% ""))
+                }
+              }
+            }
+            synonym_identifiers <- unique(synonym_identifiers[nzchar(synonym_identifiers)])
+          }
+
+          # Look up canonical labels for synonyms via find_terms (single batch request)
+          canonical_lookup <- list()
+          if (length(synonym_identifiers) > 0 && !is.null(preferred_dictionary)) {
+            terms_url <- paste0(private$pubdict_base_url, "/find_terms.json")
+            terms_params <- list(
+              identifiers = paste(synonym_identifiers, collapse = "|"),
+              dictionaries = preferred_dictionary
+            )
+            tryCatch({
+              terms_req <- httr2::request(terms_url)
+              terms_req <- httr2::req_url_query(terms_req, !!!terms_params)
+              terms_req <- httr2::req_timeout(terms_req, 30)
+              terms_resp <- httr2::req_perform(terms_req)
+              terms_data <- httr2::resp_body_json(terms_resp)
+              for (id_key in names(terms_data)) {
+                entry <- terms_data[[id_key]]
+                if (is.list(entry) && !is.null(entry$label)) {
+                  canonical_lookup[[id_key]] <- as.character(entry$label)
+                } else if (is.list(entry) && length(entry) > 0 && is.list(entry[[1]]) && !is.null(entry[[1]]$label)) {
+                  canonical_lookup[[id_key]] <- as.character(entry[[1]]$label)
+                }
+              }
+            }, error = function(e) {
+              if (self$verbose) {
+                cli::cli_alert_warning("find_terms lookup failed: {conditionMessage(e)}")
+              }
+            })
+          }
+
           # Process results
           results <- list()
 
@@ -214,23 +294,43 @@ LabelConverter <- R6::R6Class(
                 cli::cli_alert_warning("No results for: {label}")
               }
 
-              results[[length(results) + 1]] <- list(
+              row <- list(
                 input = label,
-                match_type = "Unmatched",
-                identifier = NA_character_,
-                score = NA_real_,
-                dictionary = NA_character_
+                match_type = "Unmatched"
               )
+              row[[preferred_label_column]] <- NA_character_
+              row$score <- NA_real_
+              row$identifier <- NA_character_
+              results[[length(results) + 1]] <- row
             } else {
               # Add all results, not just the first one
-              for (result_item in table_base_data) {
-                results[[length(results) + 1]] <- list(
+              for (item in table_base_data) {
+                dict_id <- item$dictionary %||% ""
+                identifier_val <- as.character(item$identifier %||% NA)
+
+                # Resolve human-readable match_type label
+                match_label <- dictionary_to_label[[dict_id]] %||% dict_id
+                if (length(match_label) == 0 || nchar(as.character(match_label)) == 0) {
+                  match_label <- "PubDictionaries"
+                }
+
+                # Resolve canonical label via preferred dictionary lookup
+                if (!is.null(preferred_dictionary) && dict_id == preferred_dictionary) {
+                  canonical_label <- as.character(item$label %||% NA)
+                } else if (!is.null(preferred_dictionary)) {
+                  canonical_label <- canonical_lookup[[identifier_val]] %||% NA_character_
+                } else {
+                  canonical_label <- as.character(item$label %||% NA)
+                }
+
+                row <- list(
                   input = label,
-                  match_type = "PubDictionaries",
-                  identifier = result_item$identifier %||% NA_character_,
-                  score = result_item$score %||% NA_real_,
-                  dictionary = result_item$dictionary %||% NA_character_
+                  match_type = as.character(match_label)
                 )
+                row[[preferred_label_column]] <- canonical_label
+                row$score <- item$score %||% NA_real_
+                row$identifier <- identifier_val
+                results[[length(results) + 1]] <- row
               }
             }
           }
@@ -251,23 +351,28 @@ LabelConverter <- R6::R6Class(
     #'
     #' @param labels Character vector of labels
     #' @param sparqlist SPARQList endpoint name
-    #' @param label_types Comma-separated label types (e.g., "symbol,synonym")
+    #' @param label_types Character vector of label types (e.g., c("symbol", "synonym"))
     #' @param taxonomy Taxonomy ID
     #'
     #' @return List of result lists
-    convert_sparqlist = function(labels, sparqlist, label_types = "symbol,synonym",
+    convert_sparqlist = function(labels, sparqlist, label_types = c("symbol", "synonym"),
                                  taxonomy = NULL) {
+
+      # Accept comma-joined strings for backward compatibility
+      if (length(label_types) == 1 && grepl(",", label_types)) {
+        label_types <- trimws(strsplit(label_types, ",")[[1]])
+      }
 
       if (self$verbose) {
         cli::cli_alert_info("Converting {length(labels)} labels using SPARQList")
         cli::cli_alert_info("Endpoint: {sparqlist}")
-        cli::cli_alert_info("Label types: {label_types}")
+        cli::cli_alert_info("Label types: {paste(label_types, collapse = ',')}")
       }
 
       # Build params - use plural parameter names as per Python implementation
       params <- list(
         labels = paste(labels, collapse = ","),
-        label_types = label_types
+        label_types = paste(label_types, collapse = ",")
       )
 
       if (!is.null(taxonomy)) {

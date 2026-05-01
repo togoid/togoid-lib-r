@@ -4,7 +4,8 @@
 #'
 #' @param ids Character vector of source IDs
 #' @param route Character vector of database names forming the conversion route
-#' @param format Output format: "dataframe" (default), "tibble", or "list"
+#' @param format Output format: "dataframe" (default), "tibble", or "list".
+#'   Specifying "json" or "table" raises an error.
 #' @param ... Additional parameters passed to TogoIDConverter$convert()
 #'
 #' @return Converted IDs in specified format
