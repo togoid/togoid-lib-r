@@ -59,12 +59,12 @@ TogoIDConverter <- R6::R6Class(
         ...
       )
 
-      # Make API request
+      # Make API request (POST + form to support large ID lists)
       response <- make_request(
         base_url = self$api_base_url,
         endpoint = "convert",
-        method = "GET",
-        params = params
+        method = "POST",
+        form_data = params
       )
 
       # Handle annotations and filters (if needed)
@@ -104,8 +104,8 @@ TogoIDConverter <- R6::R6Class(
         response <- make_request(
           base_url = self$api_base_url,
           endpoint = "convert",
-          method = "GET",
-          params = params
+          method = "POST",
+          form_data = params
         )
         private$convert_to_table(response)
       }
@@ -243,8 +243,8 @@ TogoIDConverter <- R6::R6Class(
       result <- make_request(
         base_url = self$api_base_url,
         endpoint = paste0("count/", src, "-", dst),
-        method = "GET",
-        params = params
+        method = "POST",
+        form_data = params
       )
       return(result)
     },

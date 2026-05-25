@@ -234,7 +234,8 @@ LabelConverter <- R6::R6Class(
       tryCatch(
         {
           req <- httr2::request(url)
-          req <- httr2::req_url_query(req, .multi = "comma", !!!params)
+          req <- httr2::req_method(req, "POST")
+          req <- httr2::req_body_form(req, !!!params)
           req <- httr2::req_timeout(req, 30)
 
           resp <- httr2::req_perform(req)
@@ -264,7 +265,8 @@ LabelConverter <- R6::R6Class(
             )
             tryCatch({
               terms_req <- httr2::request(terms_url)
-              terms_req <- httr2::req_url_query(terms_req, !!!terms_params)
+              terms_req <- httr2::req_method(terms_req, "POST")
+              terms_req <- httr2::req_body_form(terms_req, !!!terms_params)
               terms_req <- httr2::req_timeout(terms_req, 30)
               terms_resp <- httr2::req_perform(terms_req)
               terms_data <- httr2::resp_body_json(terms_resp)
@@ -387,7 +389,8 @@ LabelConverter <- R6::R6Class(
       tryCatch(
         {
           req <- httr2::request(url)
-          req <- httr2::req_url_query(req, !!!params)
+          req <- httr2::req_method(req, "POST")
+          req <- httr2::req_body_form(req, !!!params)
           req <- httr2::req_timeout(req, 30)
 
           if (self$verbose) {

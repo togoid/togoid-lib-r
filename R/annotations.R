@@ -179,17 +179,22 @@ AnnotationsConverter <- R6::R6Class(
         all_records <- private$apply_filters(all_records, filters)
       }
 
-      # Ensure every requested ID appears in output (missing ones get empty records)
-      requested_ids <- unique(as.character(ids))
-      ordered_records <- list()
-      for (req_id in requested_ids) {
-        if (req_id %in% names(all_records)) {
-          ordered_records[[req_id]] <- all_records[[req_id]]
-        } else {
-          ordered_records[[req_id]] <- list()
+      # When no filter is applied, ensure every requested ID appears in output
+      # (missing ones get empty records that render as NA rows). With filters,
+      # IDs that don't satisfy the filter must be dropped entirely, so we skip
+      # this padding step.
+      if (length(filters) == 0) {
+        requested_ids <- unique(as.character(ids))
+        ordered_records <- list()
+        for (req_id in requested_ids) {
+          if (req_id %in% names(all_records)) {
+            ordered_records[[req_id]] <- all_records[[req_id]]
+          } else {
+            ordered_records[[req_id]] <- list()
+          }
         }
+        all_records <- ordered_records
       }
-      all_records <- ordered_records
 
       # Convert to requested format
       if (format == "dataframe") {
