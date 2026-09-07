@@ -1,4 +1,4 @@
-#' @importFrom httr2 request req_url_query req_body_json req_perform resp_body_json resp_body_string resp_status
+#' @importFrom httr2 request req_url_query req_body_form req_body_json req_method req_perform resp_body_json resp_body_string resp_status
 #' @importFrom jsonlite fromJSON toJSON
 NULL
 
@@ -9,14 +9,16 @@ NULL
 #' @param base_url Base URL of the API
 #' @param endpoint API endpoint path
 #' @param method HTTP method ("GET" or "POST")
-#' @param params Query parameters as named list
+#' @param params Query parameters as named list (for GET) or form fields (for POST when form_data is NULL)
+#' @param form_data Named list to send as application/x-www-form-urlencoded body (POST only)
 #' @param json_data JSON body data for POST requests
 #' @param timeout Timeout in seconds (default: 30)
 #'
 #' @return Response data (list for JSON, character for text)
 #' @keywords internal
 make_request <- function(base_url, endpoint, method = "GET",
-                        params = NULL, json_data = NULL, timeout = 30) {
+                        params = NULL, form_data = NULL,
+                        json_data = NULL, timeout = 30) {
 
   # Build URL
   url <- paste0(sub("/$", "", base_url), "/", sub("^/", "", endpoint))
@@ -24,18 +26,29 @@ make_request <- function(base_url, endpoint, method = "GET",
   tryCatch(
     {
       req <- httr2::request(url)
-
-      # Add query parameters
-      if (!is.null(params) && length(params) > 0) {
-        req <- httr2::req_url_query(req, !!!params)
-      }
-
-      # Add timeout
+      req <- httr2::req_method(req, method)
       req <- httr2::req_timeout(req, timeout)
 
-      # Handle POST
-      if (method == "POST" && !is.null(json_data)) {
-        req <- httr2::req_body_json(req, json_data)
+      # Surface the API's own error message (it returns {"message": ...}) instead
+      # of only the HTTP status.
+      req <- httr2::req_error(req, body = function(resp) {
+        tryCatch(httr2::resp_body_json(resp)$message, error = function(e) NULL)
+      })
+
+      if (method == "POST") {
+        if (!is.null(json_data)) {
+          req <- httr2::req_body_json(req, json_data)
+        } else {
+          # Prefer explicit form_data; fall back to params for backward compatibility.
+          body <- if (!is.null(form_data)) form_data else params
+          if (!is.null(body) && length(body) > 0) {
+            req <- httr2::req_body_form(req, !!!body)
+          }
+        }
+      } else {
+        if (!is.null(params) && length(params) > 0) {
+          req <- httr2::req_url_query(req, !!!params)
+        }
       }
 
       # Perform request
@@ -75,27 +88,34 @@ get_env_var <- function(var_name, default) {
   return(value)
 }
 
-#' Convert Python-style format to R
+#' Normalize format string to R output type
 #'
-#' Converts different format names to consistent R output types
+#' Validates the requested output format and converts it to a canonical name.
+#' Python-specific formats ("json", "table") are rejected with an error so that
+#' R users use the R-native names ("list", "dataframe", "tibble").
 #'
-#' @param format Format name ("json", "dict", "table", "dataframe", "csv", "tsv")
+#' @param format Format name ("list", "dataframe", "tibble")
 #'
 #' @return Standardized format name
 #' @keywords internal
 normalize_format <- function(format) {
   format <- tolower(format)
+  if (format %in% c("json", "table")) {
+    cli::cli_abort(c(
+      "Unsupported format: {format}",
+      "i" = "Use one of: \"list\", \"dataframe\", \"tibble\"."
+    ))
+  }
   switch(format,
-    "json" = "json",
     "dict" = "list",
     "list" = "list",
-    "table" = "table",
     "dataframe" = "dataframe",
     "df" = "dataframe",
     "tibble" = "tibble",
-    "csv" = "csv",
-    "tsv" = "tsv",
-    "json" # default
+    cli::cli_abort(c(
+      "Unsupported format: {format}",
+      "i" = "Use one of: \"list\", \"dataframe\", \"tibble\"."
+    ))
   )
 }
 

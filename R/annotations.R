@@ -179,6 +179,23 @@ AnnotationsConverter <- R6::R6Class(
         all_records <- private$apply_filters(all_records, filters)
       }
 
+      # When no filter is applied, ensure every requested ID appears in output
+      # (missing ones get empty records that render as NA rows). With filters,
+      # IDs that don't satisfy the filter must be dropped entirely, so we skip
+      # this padding step.
+      if (length(filters) == 0) {
+        requested_ids <- unique(as.character(ids))
+        ordered_records <- list()
+        for (req_id in requested_ids) {
+          if (req_id %in% names(all_records)) {
+            ordered_records[[req_id]] <- all_records[[req_id]]
+          } else {
+            ordered_records[[req_id]] <- list()
+          }
+        }
+        all_records <- ordered_records
+      }
+
       # Convert to requested format
       if (format == "dataframe") {
         return(private$records_to_dataframe(all_records, fields))
@@ -423,6 +440,11 @@ AnnotationsConverter <- R6::R6Class(
 
     #' Convert records to data.frame
     #'
+    #' Multi-valued fields (returned as lists from GraphQL) are kept as
+    #' list-columns so each cell stays a vector rather than a comma-joined
+    #' string. Missing fields yield NA in the corresponding cell, and IDs
+    #' without any record yield rows of NA values.
+    #'
     #' @param records Named list of records
     #' @param fields Field names
     #'
@@ -432,30 +454,47 @@ AnnotationsConverter <- R6::R6Class(
         return(data.frame())
       }
 
-      # Build rows
-      rows <- lapply(names(records), function(id_value) {
-        record <- records[[id_value]]
-        row <- list(id = id_value)
+      ids_in_output <- names(records)
+      data_fields <- setdiff(fields, "id")
 
-        for (field in fields) {
-          if (field == "id") next
-
-          value <- record[[field]]
-          if (is.null(value)) {
-            row[[field]] <- NA_character_
-          } else if (is.list(value) && length(value) > 0) {
-            # Collapse list values to a single string
-            row[[field]] <- paste(unlist(value), collapse = ", ")
-          } else {
-            row[[field]] <- as.character(value)
+      # Determine which fields are list-typed (any record has a list value)
+      is_list_field <- setNames(logical(length(data_fields)), data_fields)
+      for (field in data_fields) {
+        for (id_val in ids_in_output) {
+          v <- records[[id_val]][[field]]
+          if (!is.null(v) && is.list(v)) {
+            is_list_field[[field]] <- TRUE
+            break
           }
         }
+      }
 
-        return(as.data.frame(row, stringsAsFactors = FALSE))
-      })
+      df <- data.frame(id = as.character(ids_in_output), stringsAsFactors = FALSE)
 
-      # Combine all rows
-      df <- do.call(rbind, rows)
+      for (field in data_fields) {
+        if (is_list_field[[field]]) {
+          # List column: each cell is a character vector (or NA when missing)
+          col_values <- lapply(ids_in_output, function(id_val) {
+            v <- records[[id_val]][[field]]
+            if (is.null(v)) return(NA_character_)
+            if (is.list(v)) {
+              if (length(v) == 0) return(NA_character_)
+              return(as.character(unlist(v)))
+            }
+            return(as.character(v))
+          })
+          df[[field]] <- col_values
+        } else {
+          # Scalar column
+          col_values <- vapply(ids_in_output, function(id_val) {
+            v <- records[[id_val]][[field]]
+            if (is.null(v)) return(NA_character_)
+            return(as.character(v))
+          }, character(1))
+          df[[field]] <- col_values
+        }
+      }
+
       rownames(df) <- NULL
       return(df)
     }
