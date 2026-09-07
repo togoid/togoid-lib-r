@@ -39,13 +39,13 @@ cat("\n")
 # Test 3: PubDictionaries with use_ngram_similarity
 cat("3. Testing PubDictionaries with use_ngram_similarity\n")
 result3 <- tryCatch({
-  togoid_label2id(
+  res <- togoid_label2id(
     labels = c("ATP", "water"),
     dataset = "chebi"
   )
   cat("   SUCCESS: No error occurred\n")
-  cat("   Number of results:", nrow(result3), "\n")
-  print(head(result3))
+  cat("   Number of results:", nrow(res), "\n")
+  print(head(res))
   TRUE
 }, error = function(e) {
   cat("   FAILED: Error occurred\n")

@@ -244,10 +244,10 @@ library(dplyr)
 # Chain operations with pipes
 gene_symbols <- c("BRCA1", "TP53", "EGFR")
 
+# togoid_label2id() returns a data.frame, so pull the identifier column directly
 result <- gene_symbols |>
   togoid_label2id(dataset = "ncbigene", taxonomy = "9606") |>
-  lapply(function(x) x$identifier) |>
-  unlist() |>
+  (\(df) df$identifier[!is.na(df$identifier)])() |>
   togoid_convert(route = c("ncbigene", "ensembl_gene"))
 
 # Using with dplyr
@@ -261,7 +261,7 @@ data <- data |>
   mutate(
     ncbigene_id = sapply(gene, function(g) {
       res <- togoid_label2id(g, "ncbigene", "9606")
-      res[[1]]$identifier
+      res$identifier[1]
     })
   )
 ```

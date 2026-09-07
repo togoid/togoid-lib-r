@@ -29,6 +29,12 @@ make_request <- function(base_url, endpoint, method = "GET",
       req <- httr2::req_method(req, method)
       req <- httr2::req_timeout(req, timeout)
 
+      # Surface the API's own error message (it returns {"message": ...}) instead
+      # of only the HTTP status.
+      req <- httr2::req_error(req, body = function(resp) {
+        tryCatch(httr2::resp_body_json(resp)$message, error = function(e) NULL)
+      })
+
       if (method == "POST") {
         if (!is.null(json_data)) {
           req <- httr2::req_body_json(req, json_data)
