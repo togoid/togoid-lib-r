@@ -447,12 +447,39 @@ test_that("the figure builds", {
   figure <- togoid_plot_umap_enrichment(embedding, enrichment, top_n = 2)
   expect_s3_class(figure, "patchwork")
 
-  # show_centroids toggles the markers, and frees the space they reserved.
+  # show_centroids only sets the marker opacity: the marker is still drawn and
+  # still reserves its space, so the labels must not move.
   hidden <- togoid_plot_umap_enrichment(embedding, enrichment, top_n = 2,
                                         show_centroids = FALSE)
   expect_s3_class(hidden, "patchwork")
+
   n_layers <- function(x) length(x[[2]]$layers)
-  expect_lt(n_layers(hidden), n_layers(figure))
+  expect_equal(n_layers(hidden), n_layers(figure))
+
+  # The centroid layer is the GeomPoint one carrying its own data; the cell
+  # scatter inherits the plot's data instead.
+  centroid_alpha <- function(x) {
+    for (l in x[[2]]$layers) {
+      if (inherits(l$geom, "GeomPoint") && !inherits(l$data, "waiver")) {
+        return(unname(as.numeric(l$aes_params$alpha)))
+      }
+    }
+    NA_real_
+  }
+  expect_equal(centroid_alpha(hidden), 0)
+  expect_gt(centroid_alpha(figure), 0)
+
+  # Same labels, same coordinates.
+  label_layer <- function(x) {
+    layers <- x[[2]]$layers
+    for (l in rev(layers)) {
+      if (inherits(l$geom, "GeomText")) return(l$data[order(l$data$label), ])
+    }
+    NULL
+  }
+  expect_equal(label_layer(hidden)$x, label_layer(figure)$x)
+  expect_equal(label_layer(hidden)$y, label_layer(figure)$y)
+  expect_equal(label_layer(hidden)$label, label_layer(figure)$label)
 
   # The marker is configurable.
   expect_s3_class(

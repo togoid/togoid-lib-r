@@ -428,8 +428,9 @@ figure <- togoid_plot_umap_enrichment(
 ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
 ```
 
-The centroid markers are optional: `show_centroids = FALSE` hides them, and the
-labels then move in closer, since the space they reserved is freed.
+`show_centroids = FALSE` hides the markers by drawing them transparently. They
+are still drawn and still reserve their space, so **the labels stay exactly
+where they were** — the two figures differ only in whether you can see the dots.
 `centroid_shape` takes any ggplot2 point shape (see `?points`) — 16 is a filled
 circle, 4 a cross — with `centroid_size` and `centroid_colour` to match.
 

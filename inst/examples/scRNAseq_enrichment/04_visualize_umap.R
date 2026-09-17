@@ -12,7 +12,8 @@
 # Usage:
 #   Rscript 04_visualize_umap.R [results-dir] [top-n] [targets] [show-centroids]
 #
-# show-centroids: "TRUE" (default) or "FALSE" to hide the centroid markers.
+# show-centroids: "TRUE" (default) or "FALSE". Hiding the markers draws them
+#   transparently rather than skipping them, so the labels do not move.
 
 suppressPackageStartupMessages({
   library(togoid)

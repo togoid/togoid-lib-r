@@ -253,8 +253,9 @@ How the layout works:
   then widened to cover anything that had to go outside, so nothing is clipped.
 - Labels that cannot be placed anywhere are dropped rather than drawn on top of
   each other. `verbose = TRUE` reports how many.
-- The centroid markers count as obstacles, so `show_centroids = FALSE` both
-  hides them and lets the labels sit closer to the centre. The reserved space
+- The centroid markers count as obstacles, and they do so whether or not they
+  are visible: `show_centroids = FALSE` draws them transparently rather than
+  skipping them, so hiding the markers never moves a label. The reserved space
   scales with `centroid_size`.
 
 Pass the same `width` and `height` to `togoid_plot_umap_enrichment()` and to

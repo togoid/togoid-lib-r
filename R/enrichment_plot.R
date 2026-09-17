@@ -492,7 +492,10 @@ plot_cluster_panel <- function(embedding, colours, title,
 #' @param candidates_per_term Spiral positions tried per term before giving up.
 #' @param title_left Title of the left panel.
 #' @param title_right Title of the right panel; `NULL` generates one.
-#' @param show_centroids Mark cluster centroids on the right panel.
+#' @param show_centroids Whether the cluster centroid markers are visible. The
+#'   markers are drawn either way — transparently when this is `FALSE` — and
+#'   always reserve their space, so the label positions are identical with and
+#'   without them.
 #' @param centroid_shape ggplot2 point shape for the centroids; 16 (a filled
 #'   circle) by default.
 #' @param centroid_size Centroid marker size.
@@ -586,7 +589,11 @@ togoid_plot_umap_enrichment <- function(embedding,
     fontsize_range = fontsize_range,
     weight_scale = weight_scale,
     candidates_per_term = candidates_per_term,
-    reserve_centroids = show_centroids,
+    # The centroid markers occupy space in the layout whether or not they are
+    # visible, so their boxes are always reserved; show_centroids only sets the
+    # opacity below. Toggling it then changes what you see without moving a
+    # single label, which keeps the two figures comparable.
+    reserve_centroids = TRUE,
     centroid_size = centroid_size
   )
 
@@ -595,16 +602,15 @@ togoid_plot_umap_enrichment <- function(embedding,
                     nrow(layout), nrow(selected) - nrow(layout)))
   }
 
-  if (show_centroids) {
-    marked <- centroids[centroids$cluster %in% selected$cluster, , drop = FALSE]
-    if (nrow(marked) > 0) {
-      right <- right + ggplot2::geom_point(
-        data = marked,
-        mapping = ggplot2::aes(x = .data$x, y = .data$y),
-        inherit.aes = FALSE, shape = centroid_shape, size = centroid_size,
-        stroke = 0.8, colour = centroid_colour, alpha = 0.8
-      )
-    }
+  marked <- centroids[centroids$cluster %in% selected$cluster, , drop = FALSE]
+  if (nrow(marked) > 0) {
+    right <- right + ggplot2::geom_point(
+      data = marked,
+      mapping = ggplot2::aes(x = .data$x, y = .data$y),
+      inherit.aes = FALSE, shape = centroid_shape, size = centroid_size,
+      stroke = 0.8, colour = centroid_colour,
+      alpha = if (isTRUE(show_centroids)) 0.8 else 0
+    )
   }
 
   if (nrow(layout) > 0) {
