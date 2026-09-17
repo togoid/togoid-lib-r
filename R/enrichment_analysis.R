@@ -39,7 +39,23 @@ empty_enrichment <- function(with_cluster = FALSE) {
   if (!with_cluster) {
     result$cluster <- NULL
   }
-  result
+  as_togoid_enrichment(result)
+}
+
+#' Tag a data frame as an enrichment result
+#'
+#' The result stays an ordinary data frame — every dplyr and base operation keeps
+#' working — and only gains a `print` method that formats it for the console.
+#'
+#' @param x A data frame of enrichment results.
+#'
+#' @return The same data frame with class `togoid_enrichment` added.
+#' @keywords internal
+as_togoid_enrichment <- function(x) {
+  if (!inherits(x, "togoid_enrichment")) {
+    class(x) <- unique(c("togoid_enrichment", class(x)))
+  }
+  x
 }
 
 #' Test a gene list for over-representation
@@ -153,7 +169,7 @@ togoid_enrich <- function(query_genes,
   result <- result[order(result$fdr, result$pvalue, -result$fold_enrichment), , drop = FALSE]
   result <- result[, intersect(togoid_enrichment_columns(), names(result)), drop = FALSE]
   rownames(result) <- NULL
-  result
+  as_togoid_enrichment(result)
 }
 
 #' Run enrichment for several clusters against a shared background
@@ -243,7 +259,7 @@ togoid_enrich_clusters <- function(cluster_genes,
     return(empty_enrichment(with_cluster = TRUE))
   }
   rownames(combined) <- NULL
-  combined
+  as_togoid_enrichment(combined)
 }
 
 #' Order cluster labels numerically when possible
@@ -271,7 +287,7 @@ togoid_significant <- function(enrichment, alpha = 0.05, use = "fdr") {
   }
   result <- enrichment[enrichment[[use]] < alpha, , drop = FALSE]
   rownames(result) <- NULL
-  result
+  as_togoid_enrichment(result)
 }
 
 #' Keep the most significant terms of each cluster
@@ -289,7 +305,7 @@ togoid_top_terms <- function(enrichment, n = 3) {
     ordered <- enrichment[order(enrichment$fdr, enrichment$pvalue), , drop = FALSE]
     result <- utils::head(ordered, n)
     rownames(result) <- NULL
-    return(result)
+    return(as_togoid_enrichment(result))
   }
 
   parts <- lapply(split(enrichment, enrichment$cluster), function(part) {
@@ -298,7 +314,222 @@ togoid_top_terms <- function(enrichment, n = 3) {
   })
   result <- do.call(rbind, parts)
   rownames(result) <- NULL
+  as_togoid_enrichment(result)
+}
+
+#' Format an enrichment result for display
+#'
+#' Shortens the columns that make the raw table unreadable in a console: p-values
+#' and FDRs become scientific notation, long term labels and gene lists are
+#' truncated, and the constant `background_size` column is dropped.
+#'
+#' @param x An enrichment data frame.
+#' @param ... Ignored, present for S3 compatibility.
+#' @param max_label Truncate term labels beyond this many characters.
+#' @param max_genes Show at most this many gene symbols per row.
+#'
+#' @return A plain data frame of formatted character columns.
+#' @export
+format.togoid_enrichment <- function(x, ..., max_label = 52, max_genes = 6) {
+  out <- as.data.frame(unclass(x), stringsAsFactors = FALSE)
+  if (nrow(out) == 0) {
+    return(out)
+  }
+
+  # query_size and background_size are constant within a query, and the overlap
+  # only means anything next to the term size, so they are folded into one "k/M"
+  # column. The full numbers stay in the underlying data frame.
+  if (all(c("overlap_count", "term_size") %in% names(out))) {
+    overlap <- sprintf("%d/%d", out$overlap_count, out$term_size)
+    out <- out[, setdiff(names(out), c("overlap_count", "term_size")), drop = FALSE]
+    after <- match("term_label", names(out))
+    if (is.na(after)) after <- 0L
+    out <- data.frame(
+      out[, seq_len(after), drop = FALSE],
+      overlap = overlap,
+      out[, setdiff(seq_along(out), seq_len(after)), drop = FALSE],
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }
+  out$query_size <- NULL
+  out$background_size <- NULL
+
+  for (column in intersect(c("pvalue", "fdr"), names(out))) {
+    out[[column]] <- sprintf("%.2e", out[[column]])
+  }
+  if ("fold_enrichment" %in% names(out)) {
+    out$fold_enrichment <- sprintf("%.2f", out$fold_enrichment)
+  }
+  if ("term_label" %in% names(out)) {
+    long <- nchar(out$term_label) > max_label
+    out$term_label[long] <- paste0(substr(out$term_label[long], 1, max_label - 1), "\u2026")
+  }
+  if ("genes" %in% names(out)) {
+    out$genes <- vapply(strsplit(out$genes, ",", fixed = TRUE), function(g) {
+      g <- g[nzchar(g)]
+      if (length(g) > max_genes) {
+        paste0(paste(g[seq_len(max_genes)], collapse = ", "),
+               sprintf(" (+%d)", length(g) - max_genes))
+      } else {
+        paste(g, collapse = ", ")
+      }
+    }, character(1))
+  }
+
+  out
+}
+
+#' Print an enrichment result
+#'
+#' Columns are dropped from the right when the console is too narrow to hold
+#' them, so the table stays one row per line instead of wrapping. The data frame
+#' itself is untouched — `as.data.frame(x)` still has every column.
+#'
+#' @param x An enrichment data frame.
+#' @param ... Passed to [format.togoid_enrichment()].
+#' @param n Rows to show; the rest are summarised in a footer. `Inf` shows all.
+#' @param width Console width to fit into; defaults to `getOption("width")`.
+#'
+#' @return `x`, invisibly.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' results <- togoid_enrich_clusters(clusters, gene_sets)
+#' results          # a formatted table
+#' print(results, n = Inf)
+#' }
+print.togoid_enrichment <- function(x, ..., n = 20, width = getOption("width")) {
+  if (nrow(x) == 0) {
+    cat("<togoid_enrichment> no enriched terms\n")
+    return(invisible(x))
+  }
+
+  shown <- if (is.finite(n)) min(n, nrow(x)) else nrow(x)
+  formatted <- format.togoid_enrichment(utils::head(x, shown), ...)
+  width <- max(as.integer(width), 40L)
+
+  table_width <- function(df) {
+    sum(vapply(seq_along(df), function(i) {
+      max(nchar(names(df)[i]), max(nchar(df[[i]]), 0L)) + 1L
+    }, integer(1)))
+  }
+
+  # Drop columns until the table fits on one line per row, least informative
+  # first: the cluster, term and its significance are what you came for.
+  drop_order <- c("genes", "fold_enrichment", "term_id", "overlap", "pvalue")
+  dropped <- character(0)
+  for (column in drop_order) {
+    if (table_width(formatted) <= width) {
+      break
+    }
+    if (column %in% names(formatted)) {
+      formatted <- formatted[, setdiff(names(formatted), column), drop = FALSE]
+      dropped <- c(dropped, column)
+    }
+  }
+
+  clusters <- if ("cluster" %in% names(x)) length(unique(x$cluster)) else 1L
+  cat(sprintf("<togoid_enrichment> %d term(s) across %d cluster(s)\n",
+              nrow(x), clusters))
+
+  # print.data.frame wraps at getOption("width"), so honour the width argument.
+  previous <- options(width = width)
+  on.exit(options(previous), add = TRUE)
+  print.data.frame(formatted, right = FALSE, row.names = FALSE)
+
+  if (shown < nrow(x)) {
+    cat(sprintf("... and %d more row(s); print(x, n = Inf) to see them all\n",
+                nrow(x) - shown))
+  }
+  if (length(dropped) > 0) {
+    cat(sprintf("Columns not shown (console too narrow): %s\n",
+                paste(dropped, collapse = ", ")))
+  }
+  invisible(x)
+}
+
+#' Build a wide table with one row per cluster
+#'
+#' Where the enrichment result has one row per term, this has one row per cluster
+#' with its best terms side by side — the shape you want when labelling clusters
+#' or putting the result next to a UMAP figure.
+#'
+#' @param enrichment An enrichment data frame.
+#' @param top_n Number of terms to include per cluster.
+#' @param alpha FDR threshold used to pick and count the terms.
+#'
+#' @return A data frame with one row per cluster.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' togoid_cluster_table(results, top_n = 3)
+#' }
+togoid_cluster_table <- function(enrichment, top_n = 3, alpha = 0.05) {
+  if (nrow(enrichment) == 0) {
+    return(data.frame(cluster = character(0), n_tested = integer(0),
+                      n_significant = integer(0), stringsAsFactors = FALSE))
+  }
+
+  plain <- as.data.frame(unclass(enrichment), stringsAsFactors = FALSE)
+  if (!("cluster" %in% names(plain))) {
+    plain$cluster <- "query"
+  }
+
+  clusters <- unique(plain$cluster)[cluster_sort_key(unique(plain$cluster))]
+  rows <- lapply(clusters, function(cluster) {
+    part <- plain[plain$cluster == cluster, , drop = FALSE]
+    significant <- part[part$fdr < alpha, , drop = FALSE]
+    significant <- significant[order(significant$fdr, significant$pvalue), , drop = FALSE]
+
+    row <- data.frame(
+      cluster = cluster,
+      n_tested = nrow(part),
+      n_significant = nrow(significant),
+      stringsAsFactors = FALSE
+    )
+    for (index in seq_len(top_n)) {
+      hit <- if (index <= nrow(significant)) significant[index, ] else NULL
+      row[[sprintf("top%d_term_id", index)]] <- if (is.null(hit)) "" else hit$term_id
+      row[[sprintf("top%d_term_label", index)]] <- if (is.null(hit)) "" else hit$term_label
+      row[[sprintf("top%d_fdr", index)]] <- if (is.null(hit)) "" else sprintf("%.3e", hit$fdr)
+    }
+    row
+  })
+
+  result <- do.call(rbind, rows)
+  rownames(result) <- NULL
   result
+}
+
+#' Write an enrichment result to a delimited text file
+#'
+#' Tabs rather than commas by default: term labels routinely contain commas,
+#' which a CSV has to quote and some spreadsheet imports then mis-parse.
+#'
+#' @param enrichment An enrichment data frame.
+#' @param path Destination file path.
+#' @param sep Field separator; tab by default.
+#'
+#' @return The path, invisibly.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' togoid_write_enrichment(results, "enrichment.tsv")
+#' }
+togoid_write_enrichment <- function(enrichment, path, sep = "\t") {
+  directory <- dirname(path)
+  if (!dir.exists(directory)) {
+    dir.create(directory, recursive = TRUE)
+  }
+  utils::write.table(
+    as.data.frame(unclass(enrichment), stringsAsFactors = FALSE),
+    file = path, sep = sep, quote = FALSE, row.names = FALSE, na = ""
+  )
+  invisible(path)
 }
 
 #' Build a readable per-cluster summary

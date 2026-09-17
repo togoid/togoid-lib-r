@@ -216,6 +216,78 @@ cat(togoid_enrichment_summary(results))
 write.csv(results, "enrichment.csv", row.names = FALSE)
 ```
 
+## Tables
+
+### Reading the result
+
+A result is an ordinary data frame carrying a `print` method, so it shows up as a
+tidy table in the console and still works with dplyr, `subset()` and the rest:
+
+```{r print}
+results                              # the formatted table
+print(results, n = Inf)              # every row
+print(results, width = 200)          # a wide console
+format(results, max_genes = 12)      # the formatted data frame itself
+as.data.frame(results)               # the raw values, every column
+```
+
+```
+<togoid_enrichment> 27 term(s) across 11 cluster(s)
+ cluster term_id       term_label                               overlap pvalue   fdr      fold_enrichment genes
+ 0       R-HSA-6798695 Neutrophil degranulation                 32/60   8.15e-20 6.85e-18 5.39            ANPEP, ASAH1, CD14, CD36 (+28)
+ 0       R-HSA-166058  MyD88:MAL(TIRAP) cascade initiated on p… 6/7     5.02e-06 2.11e-04 8.65            CD14, CD36, IRAK3, S100A8, TLR2
+ 1       R-HSA-156902  Peptide chain elongation                 32/70   3.75e-17 2.47e-15 4.62            EEF1A1, RPL10, RPL11 (+29)
+... and 21 more row(s); print(x, n = Inf) to see them all
+```
+
+The display folds `overlap_count` and `term_size` into one `k/M` column, drops
+the constant `query_size` and `background_size`, and — when the console is too
+narrow — drops columns from the least informative end rather than wrapping each
+row over several lines.
+
+### Writing the result
+
+```{r write}
+togoid_write_enrichment(results, "enrichment.tsv")
+togoid_write_enrichment(results, "enrichment.csv", sep = ",")
+```
+
+Tabs are the default for a reason: term labels routinely contain commas, which a
+CSV has to quote and some spreadsheet imports then mis-parse.
+
+### One row per cluster
+
+```{r wide}
+togoid_cluster_table(results, top_n = 3, alpha = 0.05)
+```
+
+| Column | Meaning |
+|---|---|
+| `cluster` | Cluster label |
+| `n_tested` | Terms tested for that cluster |
+| `n_significant` | Terms below `alpha` |
+| `top1_term_id`, `top1_term_label`, `top1_fdr` | The best term |
+| `top2_…`, `top3_…` | Runners-up, up to `top_n` |
+
+This is the shape you want when labelling clusters or reading a figure as a table.
+
+### Matching a figure exactly
+
+`togoid_plot_umap_enrichment()` picks the terms it draws with
+`togoid_select_terms()`. Call it yourself with the same filters and the table
+cannot disagree with the picture:
+
+```{r selected}
+selected <- togoid_select_terms(results, top_n = 3, fdr_cutoff = 0.05,
+                                max_label_chars = NULL)
+selected <- selected[, setdiff(names(selected), c("label", "weight"))]
+togoid_write_enrichment(selected, "figure_terms.tsv")
+```
+
+`inst/examples/scRNAseq_enrichment/04_visualize_umap.R` does exactly this,
+writing `<figure-name>.tsv` and `<figure-name>_by_cluster.tsv` next to every
+figure.
+
 ## Visualising on a UMAP
 
 ```{r plot}

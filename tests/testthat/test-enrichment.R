@@ -251,6 +251,102 @@ test_that("filtering and summarising work", {
                     fixed = TRUE))
 })
 
+test_that("enrichment results print as a formatted table", {
+  sets <- demo_gene_sets()
+  clusters <- list(
+    "0" = c("CD3D", "CD3E", "CD3G", "LCK", "ZAP70"),
+    "1" = c("MS4A1", "CD79A", "CD79B", "CD19", "BLNK")
+  )
+  results <- togoid_enrich_clusters(clusters, sets, min_set_size = 3)
+
+  # The class is added on top of data.frame, so everything else keeps working.
+  expect_s3_class(results, "togoid_enrichment")
+  expect_s3_class(results, "data.frame")
+  expect_true(is.data.frame(results))
+  expect_equal(nrow(results[results$cluster == "0", , drop = FALSE]),
+               sum(results$cluster == "0"))
+
+  formatted <- format(results)
+  expect_false("background_size" %in% names(formatted))
+  expect_false("query_size" %in% names(formatted))
+  expect_true("overlap" %in% names(formatted))
+  expect_match(formatted$overlap[1], "^[0-9]+/[0-9]+$")
+  expect_match(formatted$pvalue[1], "e[+-][0-9]+$")
+
+  long_label <- results
+  long_label$term_label[1] <- strrep("x", 200)
+  expect_lte(nchar(format(long_label, max_label = 30)$term_label[1]), 30)
+
+  printed <- utils::capture.output(print(results, width = 200))
+  expect_match(printed[1], "togoid_enrichment")
+  expect_match(printed[1], "2 cluster")
+  expect_true(any(grepl("term_label", printed)))
+
+  # A narrow console drops columns rather than wrapping rows.
+  narrow <- utils::capture.output(print(results, width = 60))
+  expect_true(any(grepl("Columns not shown", narrow)))
+  expect_true(any(grepl("cluster", narrow)))
+
+  # n limits the rows and says so.
+  limited <- utils::capture.output(print(results, n = 1, width = 200))
+  expect_true(any(grepl("more row", limited)))
+
+  empty <- utils::capture.output(print(empty_enrichment(TRUE)))
+  expect_match(empty[1], "no enriched terms")
+})
+
+test_that("the wide per-cluster table is built correctly", {
+  sets <- demo_gene_sets()
+  clusters <- list(
+    "0" = c("CD3D", "CD3E", "CD3G", "LCK", "ZAP70"),
+    "1" = c("MS4A1", "CD79A", "CD79B", "CD19", "BLNK")
+  )
+  results <- togoid_enrich_clusters(clusters, sets, min_set_size = 3)
+
+  wide <- togoid_cluster_table(results, top_n = 2)
+  expect_equal(nrow(wide), length(unique(results$cluster)))
+  expect_equal(wide$cluster, c("0", "1"))
+  expect_true(all(c("n_tested", "n_significant",
+                    "top1_term_id", "top1_term_label", "top1_fdr",
+                    "top2_term_id", "top2_term_label", "top2_fdr") %in% names(wide)))
+
+  best <- results[results$cluster == "0", , drop = FALSE]
+  best <- best[order(best$fdr), , drop = FALSE]
+  expect_equal(wide$top1_term_id[1], best$term_id[1])
+
+  # Clusters with fewer hits than top_n get empty cells, not missing columns.
+  expect_type(wide$top2_term_id, "character")
+
+  expect_equal(nrow(togoid_cluster_table(empty_enrichment(TRUE))), 0)
+})
+
+test_that("results write to TSV without quoting", {
+  sets <- demo_gene_sets()
+  results <- togoid_enrich_clusters(
+    list("0" = c("CD3D", "CD3E", "CD3G", "LCK", "ZAP70")), sets, min_set_size = 3
+  )
+
+  path <- file.path(tempdir(), "enrichment.tsv")
+  togoid_write_enrichment(results, path)
+  expect_true(file.exists(path))
+
+  lines <- readLines(path)
+  expect_equal(length(lines), nrow(results) + 1)
+  expect_equal(strsplit(lines[1], "\t")[[1]][1], "cluster")
+  expect_false(any(grepl('"', lines, fixed = TRUE)))
+
+  # Every row has the same number of fields.
+  widths <- vapply(strsplit(lines, "\t"), length, integer(1))
+  expect_equal(length(unique(widths)), 1L)
+
+  # It round-trips.
+  back <- utils::read.delim(path, stringsAsFactors = FALSE)
+  expect_equal(back$term_id, results$term_id)
+  expect_equal(back$fdr, results$fdr)
+
+  unlink(path)
+})
+
 test_that("presets are well formed", {
   routes <- togoid_enrichment_routes()
   expect_equal(routes$reactome[length(routes$reactome)], "reactome_pathway")

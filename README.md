@@ -457,6 +457,45 @@ The same analysis through a different route.
 Full-resolution figures and the analysis notes are collected in
 [issue #1](https://github.com/suimye/togoid-lib-r/issues/1).
 
+### Tables and Console Display
+
+Results are ordinary data frames with a `print` method, so they show up as a tidy
+table in the console and still work with dplyr, `subset()`, `write.csv()` and
+everything else:
+
+```r
+results          # or print(results, n = 50, width = 200)
+```
+
+```
+<togoid_enrichment> 27 term(s) across 11 cluster(s)
+ cluster term_id       term_label                               overlap pvalue   fdr      fold_enrichment genes
+ 0       R-HSA-6798695 Neutrophil degranulation                 32/60   8.15e-20 6.85e-18 5.39            ANPEP, ASAH1, CD14, CD36 (+28)
+ 0       R-HSA-166058  MyD88:MAL(TIRAP) cascade initiated on p… 6/7     5.02e-06 2.11e-04 8.65            CD14, CD36, IRAK3, S100A8, TLR2
+ 1       R-HSA-156902  Peptide chain elongation                 32/70   3.75e-17 2.47e-15 4.62            EEF1A1, RPL10, RPL11 (+29)
+... and 21 more row(s); print(x, n = Inf) to see them all
+```
+
+The display folds `overlap_count` and `term_size` into one `k/M` column, drops
+the constant `query_size` and `background_size`, and — when the console is too
+narrow — drops columns from the least informative end rather than wrapping each
+row over several lines. The data frame itself is untouched.
+
+Writing tables out:
+
+```r
+togoid_write_enrichment(results, "enrichment.tsv")   # one row per term
+togoid_cluster_table(results, top_n = 3)             # one row per cluster
+```
+
+Tabs are the default for a reason: term labels routinely contain commas, which a
+CSV has to quote and some spreadsheet imports then mis-parse.
+
+To export exactly what a figure shows, pass the same filters to
+`togoid_select_terms()`. Step 4 of the example pipeline does this automatically,
+writing `<figure-name>.tsv` and `<figure-name>_by_cluster.tsv` beside every
+figure, so the table and the picture can never disagree.
+
 ### Seurat Adapters
 
 The enrichment code knows nothing about Seurat; these adapters do the translation
@@ -496,6 +535,9 @@ makes the FDR values comparable between them.
 - `togoid_enrich(genes, gene_sets, ...)` - Over-representation for one gene list
 - `togoid_enrich_clusters(cluster_genes, gene_sets, ...)` - ... for several clusters
 - `togoid_significant()`, `togoid_top_terms()`, `togoid_enrichment_summary()` - Result helpers
+- `togoid_cluster_table()` - Wide table, one row per cluster
+- `togoid_write_enrichment()` - Write a result as TSV (or any separator)
+- `print()` / `format()` - Console-friendly views of a result
 - `togoid_save_gene_sets()`, `togoid_load_gene_sets()` - Cache a library
 - `togoid_filter_gene_sets()`, `togoid_gene_set_genes()`, `togoid_term_labels()` - Library helpers
 - `togoid_plot_umap_enrichment()`, `togoid_plot_umap_centroids()` - Figures

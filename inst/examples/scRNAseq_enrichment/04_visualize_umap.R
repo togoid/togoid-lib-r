@@ -6,6 +6,10 @@
 # embedding on the right with each cluster's enriched terms written around its
 # centroid, sized by significance.
 #
+# Beside every figure this writes the same terms as a TSV, so the table and the
+# picture always agree: a long table with one row per term, and a wide one with
+# one row per cluster.
+#
 # This step needs neither Seurat nor the Seurat object - only the plain UMAP
 # table from step 1 and the enrichment CSV from step 3.
 #
@@ -56,6 +60,40 @@ embedding <- togoid_umap_from_csv(file.path(results_dir, "01_umap.csv"))
 cat(sprintf("Loaded %d cells from %s\n", nrow(embedding),
             file.path(results_dir, "01_umap.csv")))
 
+# Write the terms a figure shows as long- and wide-format TSV tables. The
+# filters are the same ones the figure used, so the two cannot disagree.
+save_tables <- function(enrichment, stem, top_n) {
+  selected <- togoid_select_terms(
+    enrichment,
+    top_n = top_n,
+    fdr_cutoff = FDR_CUTOFF,
+    max_label_chars = NULL   # keep full labels in the table
+  )
+  if (nrow(selected) == 0) {
+    cat("  no terms passed the filters; skipping the tables\n")
+    return(invisible(NULL))
+  }
+
+  # Drop the layout-only columns that togoid_select_terms() adds.
+  long <- selected[, setdiff(names(selected), c("label", "weight")), drop = FALSE]
+  long <- long[order(cluster_order(long$cluster), long$fdr, long$pvalue), , drop = FALSE]
+
+  long_path <- file.path(results_dir, paste0(stem, ".tsv"))
+  togoid_write_enrichment(long, long_path)
+  cat(sprintf("  wrote %s\n", long_path))
+
+  wide_path <- file.path(results_dir, paste0(stem, "_by_cluster.tsv"))
+  wide <- togoid_cluster_table(long, top_n = top_n, alpha = FDR_CUTOFF)
+  write.table(wide, wide_path, sep = "\t", quote = FALSE, row.names = FALSE, na = "")
+  cat(sprintf("  wrote %s\n", wide_path))
+}
+
+# Numeric-aware cluster ordering, so cluster 10 does not sort between 1 and 2.
+cluster_order <- function(clusters) {
+  numeric_value <- suppressWarnings(as.numeric(clusters))
+  ifelse(is.na(numeric_value), Inf, numeric_value)
+}
+
 save_figure <- function(figure, stem, width, height) {
   for (extension in c("pdf", "png")) {
     path <- file.path(results_dir, paste0(stem, ".", extension))
@@ -102,8 +140,9 @@ for (name in requested) {
     verbose = TRUE
   )
 
-  save_figure(figure, sprintf("04_umap_enrichment_%s_top%d", name, top_n),
-              width = WIDTH, height = HEIGHT)
+  stem <- sprintf("04_umap_enrichment_%s_top%d", name, top_n)
+  save_figure(figure, stem, width = WIDTH, height = HEIGHT)
+  save_tables(enrichment, stem, top_n = top_n)
 }
 
 cat("\nDone.\n")
