@@ -387,6 +387,22 @@ test_that("the label layout produces no overlaps", {
   expect_gt(nrow(layout), 0)
   expect_lte(nrow(layout), nrow(selected))
 
+  # Reserving space for the centroid markers must push labels outwards.
+  free <- layout_labels(selected, centroids, bounds,
+                        panel_width_in = 8, panel_height_in = 7,
+                        reserve_centroids = FALSE)
+  distance <- function(df) {
+    idx <- match(df$cluster, centroids$cluster)
+    mean(sqrt((df$x - centroids$x[idx])^2 + (df$y - centroids$y[idx])^2))
+  }
+  expect_lt(distance(free), distance(layout))
+
+  # A larger marker reserves more space again.
+  big <- layout_labels(selected, centroids, bounds,
+                       panel_width_in = 8, panel_height_in = 7,
+                       centroid_size = 8)
+  expect_gte(distance(big), distance(layout))
+
   # No two placed labels may overlap.
   collisions <- 0
   for (i in seq_len(nrow(layout))) {
@@ -431,6 +447,20 @@ test_that("the figure builds", {
   figure <- togoid_plot_umap_enrichment(embedding, enrichment, top_n = 2)
   expect_s3_class(figure, "patchwork")
 
+  # show_centroids toggles the markers, and frees the space they reserved.
+  hidden <- togoid_plot_umap_enrichment(embedding, enrichment, top_n = 2,
+                                        show_centroids = FALSE)
+  expect_s3_class(hidden, "patchwork")
+  n_layers <- function(x) length(x[[2]]$layers)
+  expect_lt(n_layers(hidden), n_layers(figure))
+
+  # The marker is configurable.
+  expect_s3_class(
+    togoid_plot_umap_enrichment(embedding, enrichment, top_n = 2,
+                                centroid_shape = 4, centroid_colour = "grey30"),
+    "patchwork"
+  )
+
   path <- file.path(tempdir(), "figure.pdf")
   ggplot2::ggsave(path, figure, width = 20, height = 8)
   expect_gt(file.size(path), 0)
@@ -443,6 +473,10 @@ test_that("the figure builds", {
   )
 
   expect_s3_class(togoid_plot_umap_centroids(embedding), "ggplot")
+  expect_lt(
+    length(togoid_plot_umap_centroids(embedding, show_labels = FALSE)$layers),
+    length(togoid_plot_umap_centroids(embedding)$layers)
+  )
 })
 
 test_that("the Seurat marker adapter filters and orders", {

@@ -270,6 +270,7 @@ togoid_select_terms <- function(enrichment,
 #' @param candidates_per_term Spiral positions tried per term.
 #' @param padding_fraction Gap kept between labels, as a fraction of the span.
 #' @param reserve_centroids Reserve space around each centroid marker.
+#' @param centroid_size Centroid marker size, used to scale the reserved space.
 #'
 #' @return A data frame with `cluster`, `label`, `x`, `y`, `fontsize` and the
 #'   label's bounding box, one row per placed label.
@@ -283,7 +284,8 @@ layout_labels <- function(selected,
                           weight_scale = 0.8,
                           candidates_per_term = 40,
                           padding_fraction = 0.004,
-                          reserve_centroids = TRUE) {
+                          reserve_centroids = TRUE,
+                          centroid_size = 2) {
   x_span <- bounds[3] - bounds[1]
   y_span <- bounds[4] - bounds[2]
   span <- max(x_span, y_span)
@@ -304,7 +306,9 @@ layout_labels <- function(selected,
 
   obstacles <- list()
   if (reserve_centroids) {
-    marker <- span * 0.012
+    # Reserve a box a little larger than the marker itself, scaled with the
+    # requested size so labels keep clear of it.
+    marker <- span * 0.010 * max(1, sqrt(centroid_size / 2))
     for (i in seq_len(nrow(centroids))) {
       if (centroids$cluster[i] %in% selected$cluster) {
         obstacles[[length(obstacles) + 1]] <- c(
@@ -489,6 +493,10 @@ plot_cluster_panel <- function(embedding, colours, title,
 #' @param title_left Title of the left panel.
 #' @param title_right Title of the right panel; `NULL` generates one.
 #' @param show_centroids Mark cluster centroids on the right panel.
+#' @param centroid_shape ggplot2 point shape for the centroids; 16 (a filled
+#'   circle) by default.
+#' @param centroid_size Centroid marker size.
+#' @param centroid_colour Centroid marker colour.
 #' @param verbose Report how many labels were placed.
 #'
 #' @return A patchwork object combining the two panels. Save it with
@@ -519,6 +527,9 @@ togoid_plot_umap_enrichment <- function(embedding,
                                         title_left = "UMAP clustering",
                                         title_right = NULL,
                                         show_centroids = TRUE,
+                                        centroid_shape = 16,
+                                        centroid_size = 2,
+                                        centroid_colour = "black",
                                         verbose = FALSE) {
   require_plot_packages()
 
@@ -575,7 +586,8 @@ togoid_plot_umap_enrichment <- function(embedding,
     fontsize_range = fontsize_range,
     weight_scale = weight_scale,
     candidates_per_term = candidates_per_term,
-    reserve_centroids = show_centroids
+    reserve_centroids = show_centroids,
+    centroid_size = centroid_size
   )
 
   if (verbose) {
@@ -589,7 +601,8 @@ togoid_plot_umap_enrichment <- function(embedding,
       right <- right + ggplot2::geom_point(
         data = marked,
         mapping = ggplot2::aes(x = .data$x, y = .data$y),
-        inherit.aes = FALSE, shape = 4, size = 2, stroke = 0.8, colour = "black"
+        inherit.aes = FALSE, shape = centroid_shape, size = centroid_size,
+        stroke = 0.8, colour = centroid_colour, alpha = 0.8
       )
     }
   }
@@ -630,6 +643,11 @@ togoid_plot_umap_enrichment <- function(embedding,
 #' @param cluster_column Embedding column holding cluster labels.
 #' @param point_size Point size.
 #' @param title Figure title.
+#' @param centroid_shape ggplot2 point shape for the centroids; 16 (a filled
+#'   circle) by default.
+#' @param centroid_size Centroid marker size.
+#' @param centroid_colour Centroid marker colour.
+#' @param show_labels Write the cluster label beside each centroid.
 #'
 #' @return A ggplot object.
 #' @export
@@ -643,23 +661,33 @@ togoid_plot_umap_centroids <- function(embedding,
                                        y_column = "umap_2",
                                        cluster_column = "cluster",
                                        point_size = 0.5,
-                                       title = "UMAP with cluster centroids") {
+                                       title = "UMAP with cluster centroids",
+                                       centroid_shape = 16,
+                                       centroid_size = 3,
+                                       centroid_colour = "black",
+                                       show_labels = TRUE) {
   require_plot_packages()
 
   embedding <- normalise_embedding(embedding, x_column, y_column, cluster_column)
   colours <- cluster_palette(embedding$cluster)
   centroids <- togoid_cluster_centroids(embedding)
 
-  plot_cluster_panel(embedding, colours, title, point_size = point_size,
-                     point_alpha = 0.5, legend = FALSE) +
+  plot <- plot_cluster_panel(embedding, colours, title, point_size = point_size,
+                             point_alpha = 0.5, legend = FALSE) +
     ggplot2::geom_point(
       data = centroids,
       mapping = ggplot2::aes(x = .data$x, y = .data$y),
-      inherit.aes = FALSE, shape = 4, size = 3, stroke = 1.2, colour = "black"
-    ) +
-    ggplot2::geom_text(
+      inherit.aes = FALSE, shape = centroid_shape, size = centroid_size,
+      stroke = 1.2, colour = centroid_colour
+    )
+
+  if (isTRUE(show_labels)) {
+    plot <- plot + ggplot2::geom_text(
       data = centroids,
       mapping = ggplot2::aes(x = .data$x, y = .data$y, label = .data$cluster),
-      inherit.aes = FALSE, hjust = -0.4, fontface = "bold", size = 4
+      inherit.aes = FALSE, hjust = -0.6, fontface = "bold", size = 4
     )
+  }
+
+  plot
 }

@@ -420,10 +420,18 @@ figure <- togoid_plot_umap_enrichment(
   results,
   top_n = 3,
   fdr_cutoff = 0.05,
-  width = 20, height = 8
+  width = 20, height = 8,
+  show_centroids = TRUE,   # mark each cluster centroid
+  centroid_shape = 16,     # a black filled circle
+  centroid_size = 2
 )
 ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
 ```
+
+The centroid markers are optional: `show_centroids = FALSE` hides them, and the
+labels then move in closer, since the space they reserved is freed.
+`centroid_shape` takes any ggplot2 point shape (see `?points`) — 16 is a filled
+circle, 4 a cross — with `centroid_size` and `centroid_colour` to match.
 
 The left panel is the usual cluster UMAP; the right repeats it with each
 cluster's enriched terms written around its centroid, sized by `-log10(p)`.

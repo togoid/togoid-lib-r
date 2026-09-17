@@ -224,7 +224,11 @@ figure <- togoid_plot_umap_enrichment(
   results,
   top_n = 3,
   fdr_cutoff = 0.05,
-  width = 20, height = 8
+  width = 20, height = 8,
+  show_centroids = TRUE,   # mark each cluster centroid
+  centroid_shape = 16,     # any ggplot2 shape; 16 is a black filled circle
+  centroid_size = 2,
+  centroid_colour = "black"
 )
 ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
 ```
@@ -249,6 +253,9 @@ How the layout works:
   then widened to cover anything that had to go outside, so nothing is clipped.
 - Labels that cannot be placed anywhere are dropped rather than drawn on top of
   each other. `verbose = TRUE` reports how many.
+- The centroid markers count as obstacles, so `show_centroids = FALSE` both
+  hides them and lets the labels sit closer to the centre. The reserved space
+  scales with `centroid_size`.
 
 Pass the same `width` and `height` to `togoid_plot_umap_enrichment()` and to
 `ggsave()`: the layout uses them to convert font sizes into data units, so a
@@ -260,7 +267,12 @@ labels with `max_label_chars`.
 A companion figure shows where the labels are anchored:
 
 ```{r centroids}
-togoid_plot_umap_centroids(embedding)
+togoid_plot_umap_centroids(
+  embedding,
+  centroid_shape = 16,   # filled circle, as in the enrichment panel
+  centroid_size = 3,
+  show_labels = TRUE     # write the cluster label beside each centroid
+)
 ```
 
 ## Single-cell adapters

@@ -10,7 +10,9 @@
 # table from step 1 and the enrichment CSV from step 3.
 #
 # Usage:
-#   Rscript 04_visualize_umap.R [results-dir] [top-n] [targets]
+#   Rscript 04_visualize_umap.R [results-dir] [top-n] [targets] [show-centroids]
+#
+# show-centroids: "TRUE" (default) or "FALSE" to hide the centroid markers.
 
 suppressPackageStartupMessages({
   library(togoid)
@@ -25,6 +27,14 @@ requested <- if (length(args) >= 3) {
 } else {
   c("reactome", "go", "mondo")
 }
+show_centroids <- if (length(args) >= 4) as.logical(args[4]) else TRUE
+if (is.na(show_centroids)) {
+  stop("show-centroids must be TRUE or FALSE", call. = FALSE)
+}
+
+# A filled circle; see ?points for the other ggplot2 shape codes.
+CENTROID_SHAPE <- 16
+CENTROID_SIZE <- 2
 
 FDR_CUTOFF <- 0.05
 WIDTH <- 20
@@ -55,7 +65,11 @@ save_figure <- function(figure, stem, width, height) {
 
 # A reference figure showing where the labels will be anchored.
 save_figure(
-  togoid_plot_umap_centroids(embedding, title = "PBMC clusters and centroids"),
+  togoid_plot_umap_centroids(
+    embedding,
+    title = "PBMC clusters and centroids",
+    centroid_shape = CENTROID_SHAPE
+  ),
   "04_umap_centroids", width = 9, height = 8
 )
 
@@ -81,6 +95,9 @@ for (name in requested) {
     title_right = sprintf("%s (top %d per cluster)",
                           if (name %in% names(titles)) titles[[name]] else name,
                           top_n),
+    show_centroids = show_centroids,
+    centroid_shape = CENTROID_SHAPE,
+    centroid_size = CENTROID_SIZE,
     verbose = TRUE
   )
 
