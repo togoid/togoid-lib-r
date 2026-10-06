@@ -502,6 +502,24 @@ new_togoid_gene_sets <- function(sets, labels, id_map, unmapped, route, target_d
 #'
 #' @return A named list of single strings, omitting anything not known.
 #' @export
+#'
+#' @examples
+#' # Build a small library offline by writing the cache format that
+#' # togoid_gene_sets() produces, then loading it back.
+#' path <- tempfile(fileext = ".json")
+#' writeLines('{
+#'   "route": ["ncbigene", "uniprot", "reactome_pathway"],
+#'   "target_dataset": "reactome_pathway",
+#'   "labels": {"R-HSA-1": "TCR signalling", "R-HSA-2": "BCR signalling"},
+#'   "sets": {
+#'     "R-HSA-1": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
+#'     "R-HSA-2": ["MS4A1", "CD79A", "CD79B", "CD19", "BLNK"]
+#'   }
+#' }', path)
+#' sets <- togoid_load_gene_sets(path)
+#'
+#' str(togoid_gene_set_provenance(sets))
+#' unlink(path)
 togoid_gene_set_provenance <- function(gene_sets) {
   info <- list()
   if (!is.null(gene_sets$retrieved_at)) info$api_retrieved_at <- gene_sets$retrieved_at
@@ -556,6 +574,24 @@ length.togoid_gene_sets <- function(x) length(x$sets)
 #'
 #' @return Character vector of the genes appearing in at least one set.
 #' @export
+#'
+#' @examples
+#' # Build a small library offline by writing the cache format that
+#' # togoid_gene_sets() produces, then loading it back.
+#' path <- tempfile(fileext = ".json")
+#' writeLines('{
+#'   "route": ["ncbigene", "uniprot", "reactome_pathway"],
+#'   "target_dataset": "reactome_pathway",
+#'   "labels": {"R-HSA-1": "TCR signalling", "R-HSA-2": "BCR signalling"},
+#'   "sets": {
+#'     "R-HSA-1": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
+#'     "R-HSA-2": ["MS4A1", "CD79A", "CD79B", "CD19", "BLNK"]
+#'   }
+#' }', path)
+#' sets <- togoid_load_gene_sets(path)
+#'
+#' togoid_gene_set_genes(sets)
+#' unlink(path)
 togoid_gene_set_genes <- function(gene_sets) {
   if (length(gene_sets$sets) == 0) {
     return(character(0))
@@ -570,6 +606,27 @@ togoid_gene_set_genes <- function(gene_sets) {
 #'
 #' @return Character vector of labels, falling back to the term ID when unknown.
 #' @export
+#'
+#' @examples
+#' # Build a small library offline by writing the cache format that
+#' # togoid_gene_sets() produces, then loading it back.
+#' path <- tempfile(fileext = ".json")
+#' writeLines('{
+#'   "route": ["ncbigene", "uniprot", "reactome_pathway"],
+#'   "target_dataset": "reactome_pathway",
+#'   "labels": {"R-HSA-1": "TCR signalling", "R-HSA-2": "BCR signalling"},
+#'   "sets": {
+#'     "R-HSA-1": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
+#'     "R-HSA-2": ["MS4A1", "CD79A", "CD79B", "CD19", "BLNK"]
+#'   }
+#' }', path)
+#' sets <- togoid_load_gene_sets(path)
+#'
+#' togoid_term_labels(sets, c("R-HSA-1", "R-HSA-2"))
+#'
+#' # An unknown term falls back to its own ID.
+#' togoid_term_labels(sets, "R-HSA-999")
+#' unlink(path)
 togoid_term_labels <- function(gene_sets, term_ids) {
   labels <- unname(gene_sets$labels[term_ids])
   ifelse(is.na(labels), term_ids, labels)
@@ -583,6 +640,25 @@ togoid_term_labels <- function(gene_sets, term_ids) {
 #'
 #' @return A new `togoid_gene_sets` object.
 #' @export
+#'
+#' @examples
+#' # Build a small library offline by writing the cache format that
+#' # togoid_gene_sets() produces, then loading it back.
+#' path <- tempfile(fileext = ".json")
+#' writeLines('{
+#'   "route": ["ncbigene", "uniprot", "reactome_pathway"],
+#'   "target_dataset": "reactome_pathway",
+#'   "labels": {"R-HSA-1": "TCR signalling", "R-HSA-2": "BCR signalling"},
+#'   "sets": {
+#'     "R-HSA-1": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
+#'     "R-HSA-2": ["MS4A1", "CD79A", "CD79B", "CD19", "BLNK"]
+#'   }
+#' }', path)
+#' sets <- togoid_load_gene_sets(path)
+#'
+#' length(sets)
+#' length(togoid_filter_gene_sets(sets, min_size = 6))   # both sets have 5
+#' unlink(path)
 togoid_filter_gene_sets <- function(gene_sets, min_size = 1, max_size = NULL) {
   sizes <- lengths(gene_sets$sets)
   keep <- sizes >= min_size
@@ -647,9 +723,25 @@ as.data.frame.togoid_gene_sets <- function(x, row.names = NULL, optional = FALSE
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' togoid_save_gene_sets(library, "reactome.json")
-#' }
+#' # Build a small library offline by writing the cache format that
+#' # togoid_gene_sets() produces, then loading it back.
+#' path <- tempfile(fileext = ".json")
+#' writeLines('{
+#'   "route": ["ncbigene", "uniprot", "reactome_pathway"],
+#'   "target_dataset": "reactome_pathway",
+#'   "labels": {"R-HSA-1": "TCR signalling", "R-HSA-2": "BCR signalling"},
+#'   "sets": {
+#'     "R-HSA-1": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
+#'     "R-HSA-2": ["MS4A1", "CD79A", "CD79B", "CD19", "BLNK"]
+#'   }
+#' }', path)
+#' sets <- togoid_load_gene_sets(path)
+#'
+#' # Saving and loading round-trips, so an analysis reproduces offline.
+#' copy <- tempfile(fileext = ".json")
+#' togoid_save_gene_sets(sets, copy)
+#' identical(togoid_load_gene_sets(copy)$sets, sets$sets)
+#' unlink(c(path, copy))
 togoid_save_gene_sets <- function(gene_sets, path) {
   directory <- dirname(path)
   if (!dir.exists(directory)) {
@@ -680,6 +772,24 @@ togoid_save_gene_sets <- function(gene_sets, path) {
 #'
 #' @return A `togoid_gene_sets` object.
 #' @export
+#'
+#' @examples
+#' # Build a small library offline by writing the cache format that
+#' # togoid_gene_sets() produces, then loading it back.
+#' path <- tempfile(fileext = ".json")
+#' writeLines('{
+#'   "route": ["ncbigene", "uniprot", "reactome_pathway"],
+#'   "target_dataset": "reactome_pathway",
+#'   "labels": {"R-HSA-1": "TCR signalling", "R-HSA-2": "BCR signalling"},
+#'   "sets": {
+#'     "R-HSA-1": ["CD3D", "CD3E", "CD3G", "LCK", "ZAP70"],
+#'     "R-HSA-2": ["MS4A1", "CD79A", "CD79B", "CD19", "BLNK"]
+#'   }
+#' }', path)
+#' sets <- togoid_load_gene_sets(path)
+#'
+#' sets
+#' unlink(path)
 togoid_load_gene_sets <- function(path) {
   payload <- jsonlite::fromJSON(path, simplifyVector = FALSE)
 

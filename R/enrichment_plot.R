@@ -198,6 +198,18 @@ measure_text_inches <- function(label, fontsize) {
 #' @return A data frame of the selected terms, with added `label` and `weight`
 #'   (`-log10(pvalue)`) columns, most significant first.
 #' @export
+#'
+#' @examples
+#' enrichment <- data.frame(
+#'   cluster = c("0", "1"),
+#'   term_id = c("R-HSA-1", "R-HSA-2"),
+#'   term_label = c("TCR signalling", "BCR signalling"),
+#'   pvalue = c(1e-6, 1e-5),
+#'   fdr = c(1e-5, 1e-4),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' togoid_select_terms(enrichment, top_n = 1)
 togoid_select_terms <- function(enrichment,
                                 top_n = 3,
                                 pval_cutoff = NULL,
@@ -507,9 +519,27 @@ plot_cluster_panel <- function(embedding, colours, title,
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' figure <- togoid_plot_umap_enrichment(embedding, results, top_n = 3)
-#' ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
+#' embedding <- data.frame(
+#'   umap_1 = c(0, 1, 0.5, 10, 11, 10.5),
+#'   umap_2 = c(0, 1, 0.5, 10, 11, 10.5),
+#'   cluster = c("0", "0", "0", "1", "1", "1"),
+#'   stringsAsFactors = FALSE
+#' )
+#' enrichment <- data.frame(
+#'   cluster = c("0", "1"),
+#'   term_id = c("R-HSA-1", "R-HSA-2"),
+#'   term_label = c("TCR signalling", "BCR signalling"),
+#'   pvalue = c(1e-6, 1e-5),
+#'   fdr = c(1e-5, 1e-4),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' # ggplot2 and patchwork are Suggests, so guard the call.
+#' if (requireNamespace("ggplot2", quietly = TRUE) &&
+#'     requireNamespace("patchwork", quietly = TRUE)) {
+#'   figure <- togoid_plot_umap_enrichment(embedding, enrichment, top_n = 1)
+#'   # ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
+#'   class(figure)
 #' }
 togoid_plot_umap_enrichment <- function(embedding,
                                         enrichment,

@@ -29,6 +29,9 @@ togoid_enrichment_routes <- function() {
 #'
 #' @return A character vector of the valid `go_aspect` values.
 #' @export
+#'
+#' @examples
+#' togoid_go_aspects()
 togoid_go_aspects <- function() {
   c("biological_process", "molecular_function", "cellular_component")
 }

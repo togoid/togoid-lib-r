@@ -68,9 +68,21 @@ togoid_umap_from_seurat <- function(object, reduction = "umap", cluster_column =
 #' @export
 #'
 #' @examples
+#' # Any data frame with FindAllMarkers()' column names works, so this runs
+#' # without Seurat:
+#' markers <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   gene = c("CD3D", "CD3E", "MS4A1"),
+#'   p_val_adj = c(1e-10, 1e-5, 1e-8),
+#'   avg_log2FC = c(2.0, 1.5, 2.5),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' togoid_markers_from_seurat(markers)
+#'
 #' \dontrun{
-#' markers <- Seurat::FindAllMarkers(pbmc, only.pos = TRUE)
-#' gene_lists <- togoid_markers_from_seurat(markers)
+#' # The usual call:
+#' togoid_markers_from_seurat(Seurat::FindAllMarkers(pbmc, only.pos = TRUE))
 #' }
 togoid_markers_from_seurat <- function(markers,
                                        cluster_column = "cluster",
@@ -124,6 +136,16 @@ togoid_markers_from_seurat <- function(markers,
 #'
 #' @return A data frame with `umap_1`, `umap_2` and `cluster`.
 #' @export
+#'
+#' @examples
+#' path <- tempfile(fileext = ".csv")
+#' write.csv(
+#'   data.frame(umap_1 = c(0, 10), umap_2 = c(0, 10), cluster = c("0", "1")),
+#'   path, row.names = FALSE
+#' )
+#'
+#' togoid_umap_from_csv(path)
+#' unlink(path)
 togoid_umap_from_csv <- function(path,
                                  x_column = "umap_1",
                                  y_column = "umap_2",
@@ -141,6 +163,20 @@ togoid_umap_from_csv <- function(path,
 #'
 #' @return A named list mapping cluster label to its marker gene symbols.
 #' @export
+#'
+#' @examples
+#' path <- tempfile(fileext = ".csv")
+#' markers <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   gene = c("CD3D", "CD3E", "MS4A1"),
+#'   p_val_adj = c(1e-10, 1e-5, 1e-8),
+#'   avg_log2FC = c(2.0, 1.5, 2.5),
+#'   stringsAsFactors = FALSE
+#' )
+#' write.csv(markers, path, row.names = FALSE)
+#'
+#' togoid_markers_from_csv(path)
+#' unlink(path)
 togoid_markers_from_csv <- function(path,
                                     cluster_column = "cluster",
                                     gene_column = "gene",
@@ -162,6 +198,17 @@ togoid_markers_from_csv <- function(path,
 #'
 #' @return A named character vector of the paths written, invisibly.
 #' @export
+#'
+#' @examples
+#' directory <- file.path(tempdir(), "gene_lists")
+#' paths <- togoid_write_marker_lists(
+#'   list("0" = c("CD3D", "CD3E"), "1" = c("MS4A1", "CD79A")),
+#'   directory
+#' )
+#'
+#' basename(paths)
+#' readLines(paths[["0"]])
+#' unlink(directory, recursive = TRUE)
 togoid_write_marker_lists <- function(markers, directory, prefix = "cluster_") {
   if (!dir.exists(directory)) {
     dir.create(directory, recursive = TRUE)

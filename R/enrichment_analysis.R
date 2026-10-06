@@ -7,6 +7,9 @@ NULL
 #'
 #' @return A character vector of column names.
 #' @export
+#'
+#' @examples
+#' togoid_enrichment_columns()
 togoid_enrichment_columns <- function() {
   c("cluster", "term_id", "term_label", "overlap_count", "term_size",
     "query_size", "background_size", "pvalue", "fdr", "fold_enrichment", "genes")
@@ -69,6 +72,11 @@ as_togoid_enrichment <- function(x, metadata = NULL) {
 #'
 #' @return A named list; empty when the result carries no metadata.
 #' @export
+#'
+#' @examples
+#' # A result built by togoid_enrich_clusters() carries its provenance;
+#' # a plain data frame carries none.
+#' togoid_enrichment_metadata(data.frame(term_id = "R-HSA-1"))
 togoid_enrichment_metadata <- function(enrichment) {
   attr(enrichment, "togoid_metadata") %||% list()
 }
@@ -326,6 +334,28 @@ cluster_sort_key <- function(clusters) {
 #'
 #' @return The filtered data frame.
 #' @export
+#'
+#' @examples
+#' demo_enrichment <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   term_id = c("R-HSA-202433", "R-HSA-156902", "R-HSA-983695"),
+#'   term_label = c("Second messengers", "Peptide chain elongation",
+#'                  "BCR activation"),
+#'   overlap_count = c(5L, 3L, 4L),
+#'   term_size = c(5L, 20L, 4L),
+#'   query_size = c(10L, 10L, 8L),
+#'   background_size = c(100L, 100L, 100L),
+#'   pvalue = c(1e-6, 0.03, 1e-5),
+#'   fdr = c(1e-5, 0.04, 1e-4),
+#'   fold_enrichment = c(10, 1.5, 12.5),
+#'   genes = c("CD3D,CD3E,CD3G,LCK,ZAP70", "RPL10,RPL11,RPS3",
+#'             "MS4A1,CD79A,CD79B,CD19"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' togoid_significant(demo_enrichment)
+#' togoid_significant(demo_enrichment, alpha = 0.01)
+#' togoid_significant(demo_enrichment, alpha = 0.01, use = "pvalue")
 togoid_significant <- function(enrichment, alpha = 0.05, use = "fdr") {
   if (nrow(enrichment) == 0) {
     return(enrichment)
@@ -342,6 +372,27 @@ togoid_significant <- function(enrichment, alpha = 0.05, use = "fdr") {
 #'
 #' @return The filtered data frame.
 #' @export
+#'
+#' @examples
+#' demo_enrichment <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   term_id = c("R-HSA-202433", "R-HSA-156902", "R-HSA-983695"),
+#'   term_label = c("Second messengers", "Peptide chain elongation",
+#'                  "BCR activation"),
+#'   overlap_count = c(5L, 3L, 4L),
+#'   term_size = c(5L, 20L, 4L),
+#'   query_size = c(10L, 10L, 8L),
+#'   background_size = c(100L, 100L, 100L),
+#'   pvalue = c(1e-6, 0.03, 1e-5),
+#'   fdr = c(1e-5, 0.04, 1e-4),
+#'   fold_enrichment = c(10, 1.5, 12.5),
+#'   genes = c("CD3D,CD3E,CD3G,LCK,ZAP70", "RPL10,RPL11,RPS3",
+#'             "MS4A1,CD79A,CD79B,CD19"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' # One row per cluster: the best term of each.
+#' togoid_top_terms(demo_enrichment, n = 1)
 togoid_top_terms <- function(enrichment, n = 3) {
   if (nrow(enrichment) == 0) {
     return(enrichment)
@@ -509,9 +560,24 @@ print.togoid_enrichment <- function(x, ..., n = 20, width = getOption("width")) 
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' togoid_cluster_table(results, top_n = 3)
-#' }
+#' demo_enrichment <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   term_id = c("R-HSA-202433", "R-HSA-156902", "R-HSA-983695"),
+#'   term_label = c("Second messengers", "Peptide chain elongation",
+#'                  "BCR activation"),
+#'   overlap_count = c(5L, 3L, 4L),
+#'   term_size = c(5L, 20L, 4L),
+#'   query_size = c(10L, 10L, 8L),
+#'   background_size = c(100L, 100L, 100L),
+#'   pvalue = c(1e-6, 0.03, 1e-5),
+#'   fdr = c(1e-5, 0.04, 1e-4),
+#'   fold_enrichment = c(10, 1.5, 12.5),
+#'   genes = c("CD3D,CD3E,CD3G,LCK,ZAP70", "RPL10,RPL11,RPS3",
+#'             "MS4A1,CD79A,CD79B,CD19"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' togoid_cluster_table(demo_enrichment, top_n = 2)
 togoid_cluster_table <- function(enrichment, top_n = 3, alpha = 0.05) {
   if (nrow(enrichment) == 0) {
     return(data.frame(cluster = character(0), n_tested = integer(0),
@@ -563,9 +629,24 @@ togoid_cluster_table <- function(enrichment, top_n = 3, alpha = 0.05) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' cat(togoid_enrichment_header(results), sep = "\n")
-#' }
+#' demo_enrichment <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   term_id = c("R-HSA-202433", "R-HSA-156902", "R-HSA-983695"),
+#'   term_label = c("Second messengers", "Peptide chain elongation",
+#'                  "BCR activation"),
+#'   overlap_count = c(5L, 3L, 4L),
+#'   term_size = c(5L, 20L, 4L),
+#'   query_size = c(10L, 10L, 8L),
+#'   background_size = c(100L, 100L, 100L),
+#'   pvalue = c(1e-6, 0.03, 1e-5),
+#'   fdr = c(1e-5, 0.04, 1e-4),
+#'   fold_enrichment = c(10, 1.5, 12.5),
+#'   genes = c("CD3D,CD3E,CD3G,LCK,ZAP70", "RPL10,RPL11,RPS3",
+#'             "MS4A1,CD79A,CD79B,CD19"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' cat(togoid_enrichment_header(demo_enrichment), sep = "\n")
 togoid_enrichment_header <- function(enrichment, extra = list()) {
   info <- c(
     list(
@@ -600,9 +681,27 @@ togoid_enrichment_header <- function(enrichment, extra = list()) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' togoid_read_metadata("enrichment.tsv")$api_retrieved_at
-#' }
+#' demo_enrichment <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   term_id = c("R-HSA-202433", "R-HSA-156902", "R-HSA-983695"),
+#'   term_label = c("Second messengers", "Peptide chain elongation",
+#'                  "BCR activation"),
+#'   overlap_count = c(5L, 3L, 4L),
+#'   term_size = c(5L, 20L, 4L),
+#'   query_size = c(10L, 10L, 8L),
+#'   background_size = c(100L, 100L, 100L),
+#'   pvalue = c(1e-6, 0.03, 1e-5),
+#'   fdr = c(1e-5, 0.04, 1e-4),
+#'   fold_enrichment = c(10, 1.5, 12.5),
+#'   genes = c("CD3D,CD3E,CD3G,LCK,ZAP70", "RPL10,RPL11,RPS3",
+#'             "MS4A1,CD79A,CD79B,CD19"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' path <- tempfile(fileext = ".tsv")
+#' togoid_write_enrichment(demo_enrichment, path)
+#' togoid_read_metadata(path)$generated_at
+#' unlink(path)
 togoid_read_metadata <- function(path) {
   lines <- readLines(path, warn = FALSE)
   header <- lines[startsWith(lines, "#")]
@@ -642,9 +741,30 @@ togoid_read_metadata <- function(path) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' togoid_write_enrichment(results, "enrichment.tsv")
-#' }
+#' demo_enrichment <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   term_id = c("R-HSA-202433", "R-HSA-156902", "R-HSA-983695"),
+#'   term_label = c("Second messengers", "Peptide chain elongation",
+#'                  "BCR activation"),
+#'   overlap_count = c(5L, 3L, 4L),
+#'   term_size = c(5L, 20L, 4L),
+#'   query_size = c(10L, 10L, 8L),
+#'   background_size = c(100L, 100L, 100L),
+#'   pvalue = c(1e-6, 0.03, 1e-5),
+#'   fdr = c(1e-5, 0.04, 1e-4),
+#'   fold_enrichment = c(10, 1.5, 12.5),
+#'   genes = c("CD3D,CD3E,CD3G,LCK,ZAP70", "RPL10,RPL11,RPS3",
+#'             "MS4A1,CD79A,CD79B,CD19"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' path <- tempfile(fileext = ".tsv")
+#' togoid_write_enrichment(demo_enrichment, path)
+#'
+#' # The "#" header records the provenance; read the table past it.
+#' head(readLines(path), 3)
+#' read.delim(path, comment.char = "#")
+#' unlink(path)
 togoid_write_enrichment <- function(enrichment, path, sep = "\t",
                                     header = TRUE, extra_header = list()) {
   directory <- dirname(path)
@@ -677,9 +797,24 @@ togoid_write_enrichment <- function(enrichment, path, sep = "\t",
 #' @export
 #'
 #' @examples
-#' \dontrun{
-#' cat(togoid_enrichment_summary(results))
-#' }
+#' demo_enrichment <- data.frame(
+#'   cluster = c("0", "0", "1"),
+#'   term_id = c("R-HSA-202433", "R-HSA-156902", "R-HSA-983695"),
+#'   term_label = c("Second messengers", "Peptide chain elongation",
+#'                  "BCR activation"),
+#'   overlap_count = c(5L, 3L, 4L),
+#'   term_size = c(5L, 20L, 4L),
+#'   query_size = c(10L, 10L, 8L),
+#'   background_size = c(100L, 100L, 100L),
+#'   pvalue = c(1e-6, 0.03, 1e-5),
+#'   fdr = c(1e-5, 0.04, 1e-4),
+#'   fold_enrichment = c(10, 1.5, 12.5),
+#'   genes = c("CD3D,CD3E,CD3G,LCK,ZAP70", "RPL10,RPL11,RPS3",
+#'             "MS4A1,CD79A,CD79B,CD19"),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' cat(togoid_enrichment_summary(demo_enrichment))
 togoid_enrichment_summary <- function(enrichment, alpha = 0.05, top = 5) {
   lines <- c(togoid_enrichment_header(enrichment), "",
              "Enrichment summary", strrep("=", 60), "")
