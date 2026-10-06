@@ -8,3 +8,7 @@
 ^\.claude$
 ^install_dependencies\.R$
 ^create_package\.R$
+^debug_test2\.R$
+^test_.*\.R$
+^tasks$
+^cran-comments\.md$
