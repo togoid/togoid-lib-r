@@ -31,6 +31,21 @@ local_id <- function(id) {
   id
 }
 
+#' Current local time as an ISO 8601 string
+#'
+#' Used to record when the TogoID API was queried: the annotation databases
+#' behind it are updated, so a result is only reproducible together with the
+#' date it was retrieved.
+#'
+#' @return A string such as `"2026-09-17T18:42:31+0900"`.
+#' @export
+#'
+#' @examples
+#' togoid_timestamp()
+togoid_timestamp <- function() {
+  format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+}
+
 #' Split a vector into batches
 #'
 #' @param x Vector to split.
@@ -284,6 +299,11 @@ togoid_gene_sets <- function(genes,
   target_dataset <- route[length(route)]
   genes <- unique(as.character(genes))
 
+  # Recorded before the first request, so it reflects the state of the API this
+  # library was actually built from.
+  retrieved_at <- togoid_timestamp()
+  api_base_url <- Sys.getenv("TOGOID_API_ENDPOINT", "https://api.togoid.dbcls.jp")
+
   enrich_log(verbose, strrep("=", 60))
   enrich_log(verbose, sprintf("Building gene sets: %s",
                               paste(route, collapse = " -> ")))
@@ -308,7 +328,9 @@ togoid_gene_sets <- function(genes,
     enrich_log(verbose, "No genes could be resolved; returning an empty library.")
     return(new_togoid_gene_sets(
       sets = list(), labels = character(0), id_map = id_map,
-      unmapped = unmapped, route = route, target_dataset = target_dataset
+      unmapped = unmapped, route = route, target_dataset = target_dataset,
+      retrieved_at = retrieved_at, taxonomy = taxonomy,
+      term_filters = term_filters, api_base_url = api_base_url
     ))
   }
 
@@ -370,7 +392,9 @@ togoid_gene_sets <- function(genes,
   if (length(pairs) == 0) {
     return(new_togoid_gene_sets(
       sets = list(), labels = character(0), id_map = id_map,
-      unmapped = unmapped, route = route, target_dataset = target_dataset
+      unmapped = unmapped, route = route, target_dataset = target_dataset,
+      retrieved_at = retrieved_at, taxonomy = taxonomy,
+      term_filters = term_filters, api_base_url = api_base_url
     ))
   }
 
@@ -428,7 +452,9 @@ togoid_gene_sets <- function(genes,
 
   result <- new_togoid_gene_sets(
     sets = sets, labels = labels, id_map = id_map,
-    unmapped = unmapped, route = route, target_dataset = target_dataset
+    unmapped = unmapped, route = route, target_dataset = target_dataset,
+    retrieved_at = retrieved_at, taxonomy = taxonomy,
+    term_filters = term_filters, api_base_url = api_base_url
   )
   enrich_log(verbose, sprintf("Done: %d terms, %d genes",
                               length(sets), length(togoid_gene_set_genes(result))))
@@ -446,7 +472,9 @@ togoid_gene_sets <- function(genes,
 #'
 #' @return An object of class `togoid_gene_sets`.
 #' @keywords internal
-new_togoid_gene_sets <- function(sets, labels, id_map, unmapped, route, target_dataset) {
+new_togoid_gene_sets <- function(sets, labels, id_map, unmapped, route, target_dataset,
+                                 retrieved_at = NULL, taxonomy = NULL,
+                                 term_filters = NULL, api_base_url = NULL) {
   structure(
     list(
       sets = sets,
@@ -454,10 +482,53 @@ new_togoid_gene_sets <- function(sets, labels, id_map, unmapped, route, target_d
       id_map = id_map,
       unmapped = unmapped,
       route = route,
-      target_dataset = target_dataset
+      target_dataset = target_dataset,
+      # When the API was queried. Preserved across save/load, so a cached
+      # library keeps reporting the date its contents actually came from.
+      retrieved_at = retrieved_at,
+      taxonomy = taxonomy,
+      term_filters = term_filters,
+      api_base_url = api_base_url
     ),
     class = "togoid_gene_sets"
   )
+}
+
+#' Where a gene-set library came from
+#'
+#' The provenance recorded in the headers of written tables.
+#'
+#' @param gene_sets A `togoid_gene_sets` object.
+#'
+#' @return A named list of single strings, omitting anything not known.
+#' @export
+togoid_gene_set_provenance <- function(gene_sets) {
+  info <- list()
+  if (!is.null(gene_sets$retrieved_at)) info$api_retrieved_at <- gene_sets$retrieved_at
+  if (!is.null(gene_sets$api_base_url)) info$api_base_url <- gene_sets$api_base_url
+  if (length(gene_sets$route) > 0) {
+    info$route <- paste(gene_sets$route, collapse = " -> ")
+  }
+  if (nzchar(gene_sets$target_dataset %||% "")) {
+    info$target_dataset <- gene_sets$target_dataset
+  }
+  if (!is.null(gene_sets$taxonomy)) info$taxonomy <- gene_sets$taxonomy
+  if (length(gene_sets$term_filters) > 0) {
+    info$term_filters <- paste(
+      vapply(names(gene_sets$term_filters), function(field) {
+        sprintf("%s=%s", field, paste(gene_sets$term_filters[[field]], collapse = ","))
+      }, character(1)),
+      collapse = "; "
+    )
+  }
+  # Prefixed, because a result written from this library reports its own
+  # n_terms and these must not overwrite each other in the header.
+  info$library_n_terms <- length(gene_sets$sets)
+  info$library_n_genes <- length(togoid_gene_set_genes(gene_sets))
+  if (length(gene_sets$unmapped) > 0) {
+    info$library_n_unmapped_genes <- length(gene_sets$unmapped)
+  }
+  info
 }
 
 #' @export
@@ -467,6 +538,9 @@ print.togoid_gene_sets <- function(x, ...) {
     x$target_dataset, length(x$sets), length(togoid_gene_set_genes(x))
   ))
   cat(sprintf("  route: %s\n", paste(x$route, collapse = " -> ")))
+  if (!is.null(x$retrieved_at)) {
+    cat(sprintf("  retrieved from the API: %s\n", x$retrieved_at))
+  }
   if (length(x$unmapped) > 0) {
     cat(sprintf("  unmapped genes: %d\n", length(x$unmapped)))
   }
@@ -522,7 +596,11 @@ togoid_filter_gene_sets <- function(gene_sets, min_size = 1, max_size = NULL) {
     id_map = gene_sets$id_map,
     unmapped = gene_sets$unmapped,
     route = gene_sets$route,
-    target_dataset = gene_sets$target_dataset
+    target_dataset = gene_sets$target_dataset,
+    retrieved_at = gene_sets$retrieved_at,
+    taxonomy = gene_sets$taxonomy,
+    term_filters = gene_sets$term_filters,
+    api_base_url = gene_sets$api_base_url
   )
 }
 
@@ -580,6 +658,10 @@ togoid_save_gene_sets <- function(gene_sets, path) {
   payload <- list(
     route = as.list(gene_sets$route),
     target_dataset = gene_sets$target_dataset,
+    retrieved_at = gene_sets$retrieved_at,
+    taxonomy = gene_sets$taxonomy,
+    term_filters = gene_sets$term_filters,
+    api_base_url = gene_sets$api_base_url,
     labels = as.list(gene_sets$labels),
     id_map = as.list(gene_sets$id_map),
     unmapped = as.list(gene_sets$unmapped),
@@ -615,6 +697,11 @@ togoid_load_gene_sets <- function(path) {
     id_map = as_named_character(payload$id_map),
     unmapped = unlist(payload$unmapped %||% list(), use.names = FALSE) %||% character(0),
     route = unlist(payload$route %||% list(), use.names = FALSE) %||% character(0),
-    target_dataset = payload$target_dataset %||% ""
+    target_dataset = payload$target_dataset %||% "",
+    retrieved_at = payload$retrieved_at,
+    taxonomy = payload$taxonomy,
+    term_filters = lapply(payload$term_filters %||% list(),
+                          function(v) unlist(v, use.names = FALSE)),
+    api_base_url = payload$api_base_url
   )
 }

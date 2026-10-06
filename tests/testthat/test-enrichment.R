@@ -331,20 +331,117 @@ test_that("results write to TSV without quoting", {
   expect_true(file.exists(path))
 
   lines <- readLines(path)
-  expect_equal(length(lines), nrow(results) + 1)
-  expect_equal(strsplit(lines[1], "\t")[[1]][1], "cluster")
-  expect_false(any(grepl('"', lines, fixed = TRUE)))
+  data <- lines[!startsWith(lines, "#")]
+  expect_equal(length(data), nrow(results) + 1)
+  expect_equal(strsplit(data[1], "\t")[[1]][1], "cluster")
+  expect_false(any(grepl('"', data, fixed = TRUE)))
 
   # Every row has the same number of fields.
-  widths <- vapply(strsplit(lines, "\t"), length, integer(1))
+  widths <- vapply(strsplit(data, "\t"), length, integer(1))
   expect_equal(length(unique(widths)), 1L)
 
-  # It round-trips.
-  back <- utils::read.delim(path, stringsAsFactors = FALSE)
+  # It round-trips once the comment header is skipped.
+  back <- utils::read.delim(path, comment.char = "#", stringsAsFactors = FALSE)
   expect_equal(back$term_id, results$term_id)
   expect_equal(back$fdr, results$fdr)
 
   unlink(path)
+})
+
+test_that("the API retrieval date and options reach every output", {
+  stamp <- togoid_timestamp()
+  expect_match(stamp, "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}")
+
+  sets <- new_togoid_gene_sets(
+    sets = list("T:1" = c("CD3D", "CD3E", "CD3G", "LCK", "ZAP70")),
+    labels = c("T:1" = "TCR signalling"),
+    id_map = character(0), unmapped = character(0),
+    route = c("ncbigene", "uniprot", "demo"), target_dataset = "demo",
+    retrieved_at = "2026-01-01T00:00:00+0900", taxonomy = "9606",
+    term_filters = list(go_aspect = "biological_process"),
+    api_base_url = "https://api.example.org"
+  )
+
+  info <- togoid_gene_set_provenance(sets)
+  expect_equal(info$api_retrieved_at, "2026-01-01T00:00:00+0900")
+  expect_equal(info$route, "ncbigene -> uniprot -> demo")
+  expect_equal(info$taxonomy, "9606")
+  expect_equal(info$term_filters, "go_aspect=biological_process")
+  # Library counts are name-spaced so they cannot overwrite the result's own.
+  expect_true("library_n_terms" %in% names(info))
+  expect_false("n_terms" %in% names(info))
+
+  path <- file.path(tempdir(), "lib.json")
+  togoid_save_gene_sets(sets, path)
+  reloaded <- togoid_load_gene_sets(path)
+  expect_equal(reloaded$retrieved_at, sets$retrieved_at)
+  expect_equal(reloaded$taxonomy, "9606")
+  expect_equal(reloaded$term_filters$go_aspect, "biological_process")
+  unlink(path)
+
+  expect_equal(togoid_filter_gene_sets(sets, 1)$retrieved_at, sets$retrieved_at)
+
+  results <- togoid_enrich_clusters(
+    list("0" = c("CD3D", "CD3E", "CD3G", "LCK", "ZAP70")), sets, min_set_size = 3
+  )
+  header <- togoid_enrichment_header(results)
+  expect_true(all(startsWith(header, "#")))
+  expect_true(any(grepl("api_retrieved_at: 2026-01-01", header)))
+  expect_true(any(grepl("min_set_size: 3", header)))
+  expect_true(any(grepl("background: library genes", header)))
+  # Keys must not repeat, even when metadata is carried over from a prior step.
+  keys <- sub("^# ([^:]*):.*$", "\\1", header[-1])
+  expect_equal(anyDuplicated(keys), 0L)
+
+  explicit <- togoid_enrich(
+    c("CD3D", "CD3E", "CD3G"), sets, min_set_size = 3,
+    background = c(togoid_gene_set_genes(sets), "EXTRA")
+  )
+  expect_true(any(grepl("background: explicit", togoid_enrichment_header(explicit))))
+
+  expect_true(grepl("api_retrieved_at: 2026-01-01",
+                    togoid_enrichment_summary(results), fixed = TRUE))
+})
+
+test_that("written tables carry a readable header", {
+  sets <- new_togoid_gene_sets(
+    sets = list("T:1" = c("CD3D", "CD3E", "CD3G", "LCK", "ZAP70")),
+    labels = c("T:1" = "TCR signalling"),
+    id_map = character(0), unmapped = character(0),
+    route = c("a", "b"), target_dataset = "b",
+    retrieved_at = "2026-01-01T00:00:00+0900"
+  )
+  results <- togoid_enrich_clusters(
+    list("0" = c("CD3D", "CD3E", "CD3G", "LCK", "ZAP70")), sets, min_set_size = 3
+  )
+
+  path <- file.path(tempdir(), "with_header.tsv")
+  # Writing must not warn about appending column names.
+  expect_silent(togoid_write_enrichment(results, path))
+
+  metadata <- togoid_read_metadata(path)
+  expect_equal(metadata$api_retrieved_at, "2026-01-01T00:00:00+0900")
+  expect_equal(metadata$min_set_size, "3")
+
+  lines <- readLines(path)
+  comments <- sum(startsWith(lines, "#"))
+  expect_gt(comments, 3)
+  expect_true(startsWith(lines[comments + 1], "cluster\t"))
+
+  parsed <- utils::read.delim(path, comment.char = "#", stringsAsFactors = FALSE)
+  expect_equal(nrow(parsed), nrow(results))
+
+  # Extra entries are appended.
+  extra_path <- file.path(tempdir(), "extra.tsv")
+  togoid_write_enrichment(results, extra_path, extra_header = list(selection = "top 3"))
+  expect_equal(togoid_read_metadata(extra_path)$selection, "top 3")
+
+  plain <- file.path(tempdir(), "no_header.tsv")
+  togoid_write_enrichment(results, plain, header = FALSE)
+  expect_true(startsWith(readLines(plain)[1], "cluster\t"))
+  expect_length(togoid_read_metadata(plain), 0)
+
+  unlink(c(path, extra_path, plain))
 })
 
 test_that("presets are well formed", {

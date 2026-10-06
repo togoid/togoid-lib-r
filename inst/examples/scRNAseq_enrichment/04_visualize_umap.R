@@ -13,11 +13,16 @@
 # This step needs neither Seurat nor the Seurat object - only the plain UMAP
 # table from step 1 and the enrichment CSV from step 3.
 #
+# The tables carry a "#" header with the date the TogoID API was queried - taken
+# from step 3's output and passed on - plus the options used here. File names
+# carry a date stamp.
+#
 # Usage:
-#   Rscript 04_visualize_umap.R [results-dir] [top-n] [targets] [show-centroids]
+#   Rscript 04_visualize_umap.R [results-dir] [top-n] [targets] [show-centroids] [date-suffix]
 #
 # show-centroids: "TRUE" (default) or "FALSE". Hiding the markers draws them
 #   transparently rather than skipping them, so the labels do not move.
+# date-suffix: date stamp for output names (default: today); "" to omit it.
 
 suppressPackageStartupMessages({
   library(togoid)
@@ -36,6 +41,8 @@ show_centroids <- if (length(args) >= 4) as.logical(args[4]) else TRUE
 if (is.na(show_centroids)) {
   stop("show-centroids must be TRUE or FALSE", call. = FALSE)
 }
+date_suffix <- if (length(args) >= 5) args[5] else format(Sys.Date(), "%Y%m%d")
+suffix <- if (nzchar(date_suffix)) paste0("_", date_suffix) else ""
 
 # A filled circle; see ?points for the other ggplot2 shape codes.
 CENTROID_SHAPE <- 16
@@ -60,9 +67,22 @@ embedding <- togoid_umap_from_csv(file.path(results_dir, "01_umap.csv"))
 cat(sprintf("Loaded %d cells from %s\n", nrow(embedding),
             file.path(results_dir, "01_umap.csv")))
 
+# Step 3 date-stamps its files, so pick the most recent match rather than
+# guessing today's date; a plain unstamped name still works.
+find_enrichment_file <- function(name) {
+  for (pattern in c(sprintf("^03_enrichment_%s_all.*\\.tsv$", name),
+                    sprintf("^03_enrichment_%s_all.*\\.csv$", name))) {
+    matches <- sort(list.files(results_dir, pattern = pattern, full.names = TRUE))
+    if (length(matches) > 0) {
+      return(matches[length(matches)])
+    }
+  }
+  NULL
+}
+
 # Write the terms a figure shows as long- and wide-format TSV tables. The
 # filters are the same ones the figure used, so the two cannot disagree.
-save_tables <- function(enrichment, stem, top_n) {
+save_tables <- function(enrichment, stem, top_n, metadata) {
   selected <- togoid_select_terms(
     enrichment,
     top_n = top_n,
@@ -78,13 +98,30 @@ save_tables <- function(enrichment, stem, top_n) {
   long <- selected[, setdiff(names(selected), c("label", "weight")), drop = FALSE]
   long <- long[order(cluster_order(long$cluster), long$fdr, long$pvalue), , drop = FALSE]
 
+  # Carry step 3's provenance forward and add what this step chose.
+  long <- as_togoid_enrichment(long, metadata)
+  extra <- list(
+    figure_generated_at = togoid_timestamp(),
+    selection = sprintf("top %d terms per cluster", top_n),
+    fdr_cutoff = FDR_CUTOFF,
+    show_centroids = show_centroids
+  )
+
   long_path <- file.path(results_dir, paste0(stem, ".tsv"))
-  togoid_write_enrichment(long, long_path)
+  togoid_write_enrichment(long, long_path, extra_header = extra)
   cat(sprintf("  wrote %s\n", long_path))
 
   wide_path <- file.path(results_dir, paste0(stem, "_by_cluster.tsv"))
   wide <- togoid_cluster_table(long, top_n = top_n, alpha = FDR_CUTOFF)
-  write.table(wide, wide_path, sep = "\t", quote = FALSE, row.names = FALSE, na = "")
+  connection <- file(wide_path, open = "wt", encoding = "UTF-8")
+  writeLines(
+    togoid_enrichment_header(
+      long, c(extra, list(table = sprintf("one row per cluster, top %d terms", top_n)))
+    ),
+    connection
+  )
+  write.table(wide, connection, sep = "\t", quote = FALSE, row.names = FALSE, na = "")
+  close(connection)
   cat(sprintf("  wrote %s\n", wide_path))
 }
 
@@ -109,19 +146,30 @@ save_figure(
     title = "PBMC clusters and centroids",
     centroid_shape = CENTROID_SHAPE
   ),
-  "04_umap_centroids", width = 9, height = 8
+  paste0("04_umap_centroids", suffix), width = 9, height = 8
 )
 
 for (name in requested) {
-  path <- file.path(results_dir, sprintf("03_enrichment_%s_all.csv", name))
-  if (!file.exists(path)) {
-    cat(sprintf("\nTarget: %s - %s not found, skipping\n", name, path))
+  path <- find_enrichment_file(name)
+  if (is.null(path)) {
+    cat(sprintf("\nTarget: %s - no step 3 output found, skipping\n", name))
     next
   }
 
   cat(sprintf("\nTarget: %s\n", name))
-  enrichment <- read.csv(path, stringsAsFactors = FALSE)
-  cat(sprintf("  loaded %d enrichment rows\n", nrow(enrichment)))
+
+  # The "#" header carries the date the API was queried; read.delim skips it and
+  # togoid_read_metadata() parses it, so this step can pass it on.
+  metadata <- togoid_read_metadata(path)
+  separator <- if (endsWith(path, ".tsv")) "\t" else ","
+  enrichment <- utils::read.table(
+    path, sep = separator, header = TRUE, comment.char = "#",
+    quote = "\"", stringsAsFactors = FALSE
+  )
+  cat(sprintf("  loaded %d enrichment rows from %s\n", nrow(enrichment), path))
+  if (!is.null(metadata$api_retrieved_at)) {
+    cat(sprintf("  TogoID API retrieved on %s\n", metadata$api_retrieved_at))
+  }
 
   figure <- togoid_plot_umap_enrichment(
     embedding,
@@ -140,9 +188,9 @@ for (name in requested) {
     verbose = TRUE
   )
 
-  stem <- sprintf("04_umap_enrichment_%s_top%d", name, top_n)
+  stem <- sprintf("04_umap_enrichment_%s_top%d%s", name, top_n, suffix)
   save_figure(figure, stem, width = WIDTH, height = HEIGHT)
-  save_tables(enrichment, stem, top_n = top_n)
+  save_tables(enrichment, stem, top_n = top_n, metadata = metadata)
 }
 
 cat("\nDone.\n")

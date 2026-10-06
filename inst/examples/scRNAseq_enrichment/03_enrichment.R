@@ -7,11 +7,16 @@
 # to NCBI Gene IDs, walking the route, and fetching term labels - and the same
 # code serves Reactome, GO and MONDO by changing nothing but the route.
 #
+# Every output carries a "#" header with the date the TogoID API was queried and
+# the options used, and its file name carries a date stamp, so a re-run against
+# an updated API does not overwrite an earlier result.
+#
 # Usage:
-#   Rscript 03_enrichment.R [results-dir] [targets]
+#   Rscript 03_enrichment.R [results-dir] [targets] [date-suffix]
 #
 # Example:
 #   Rscript 03_enrichment.R results reactome,go
+#   Rscript 03_enrichment.R results reactome ""     # no date stamp
 
 suppressPackageStartupMessages(library(togoid))
 
@@ -24,6 +29,18 @@ requested <- if (length(args) >= 2) {
 }
 
 TAXONOMY <- "9606"
+
+# Date stamp for output file names; pass "" as the third argument to omit it.
+date_suffix <- if (length(args) >= 3) args[3] else format(Sys.Date(), "%Y%m%d")
+
+# Build a file name with an optional date stamp before the extension.
+stamped <- function(name, extension) {
+  if (nzchar(date_suffix)) {
+    file.path(results_dir, sprintf("%s_%s.%s", name, date_suffix, extension))
+  } else {
+    file.path(results_dir, sprintf("%s.%s", name, extension))
+  }
+}
 
 # Databases analysed by default, with the route and term-size bounds each one
 # wants. GO and Reactome have large sets; MONDO's disease sets are much smaller,
@@ -73,7 +90,7 @@ for (name in requested) {
     verbose = TRUE
   )
 
-  cache_path <- file.path(results_dir, sprintf("03_genesets_%s.json", name))
+  cache_path <- stamped(sprintf("03_genesets_%s", name), "json")
   togoid_save_gene_sets(gene_sets, cache_path)
   cat(sprintf("Saved gene sets to %s\n", cache_path))
 
@@ -90,23 +107,23 @@ for (name in requested) {
     verbose = TRUE
   )
 
-  all_path <- file.path(results_dir, sprintf("03_enrichment_%s_all.csv", name))
-  write.csv(results, all_path, row.names = FALSE)
+  all_path <- stamped(sprintf("03_enrichment_%s_all", name), "tsv")
+  togoid_write_enrichment(results, all_path)
   cat(sprintf("Wrote %d rows to %s\n", nrow(results), all_path))
 
   significant <- togoid_significant(results, alpha = 0.05)
-  sig_path <- file.path(results_dir, sprintf("03_enrichment_%s_significant.csv", name))
-  write.csv(significant, sig_path, row.names = FALSE)
+  sig_path <- stamped(sprintf("03_enrichment_%s_significant", name), "tsv")
+  togoid_write_enrichment(significant, sig_path)
   cat(sprintf("Wrote %d significant rows to %s\n", nrow(significant), sig_path))
 
-  summary_path <- file.path(results_dir, sprintf("03_enrichment_%s_summary.txt", name))
+  summary_path <- stamped(sprintf("03_enrichment_%s_summary", name), "txt")
   writeLines(togoid_enrichment_summary(results), summary_path)
   cat(sprintf("Wrote %s\n", summary_path))
 
   # An RDS keeps the objects for further analysis in R without re-querying.
   saveRDS(
     list(gene_sets = gene_sets, results = results),
-    file.path(results_dir, sprintf("03_enrichment_%s.rds", name))
+    stamped(sprintf("03_enrichment_%s", name), "rds")
   )
 }
 

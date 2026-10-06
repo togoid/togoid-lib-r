@@ -48,14 +48,29 @@ empty_enrichment <- function(with_cluster = FALSE) {
 #' working — and only gains a `print` method that formats it for the console.
 #'
 #' @param x A data frame of enrichment results.
+#' @param metadata Named list of provenance and options; kept as an attribute
+#'   and written into the header of exported tables. `NULL` keeps what `x` has.
 #'
 #' @return The same data frame with class `togoid_enrichment` added.
 #' @keywords internal
-as_togoid_enrichment <- function(x) {
+as_togoid_enrichment <- function(x, metadata = NULL) {
   if (!inherits(x, "togoid_enrichment")) {
     class(x) <- unique(c("togoid_enrichment", class(x)))
   }
+  if (!is.null(metadata)) {
+    attr(x, "togoid_metadata") <- metadata
+  }
   x
+}
+
+#' Provenance and options recorded on an enrichment result
+#'
+#' @param enrichment An enrichment data frame.
+#'
+#' @return A named list; empty when the result carries no metadata.
+#' @export
+togoid_enrichment_metadata <- function(enrichment) {
+  attr(enrichment, "togoid_metadata") %||% list()
 }
 
 #' Test a gene list for over-representation
@@ -105,8 +120,28 @@ togoid_enrich <- function(query_genes,
   background_size <- length(background_set)
   query_size <- length(query_set)
 
+  # The options that shaped these numbers, recorded so a written table can say
+  # how it was produced.
+  metadata <- c(
+    togoid_gene_set_provenance(gene_sets),
+    list(
+      min_set_size = min_set_size,
+      max_set_size = if (is.null(max_set_size)) "none" else max_set_size,
+      min_overlap = min_overlap,
+      background_size = background_size,
+      # togoid_enrich_clusters() resolves the default before calling in, so
+      # compare the sets rather than trusting the argument being NULL.
+      background = if (is.null(background) ||
+                       setequal(background_set, togoid_gene_set_genes(gene_sets))) {
+        "library genes"
+      } else {
+        "explicit"
+      }
+    )
+  )
+
   if (background_size == 0 || query_size == 0 || length(gene_sets$sets) == 0) {
-    return(empty_enrichment(with_cluster))
+    return(as_togoid_enrichment(empty_enrichment(with_cluster), metadata))
   }
 
   # Restrict each gene set to the background, so term sizes and the background
@@ -122,7 +157,7 @@ togoid_enrich <- function(query_genes,
   term_size <- term_size[keep]
 
   if (length(restricted) == 0) {
-    return(empty_enrichment(with_cluster))
+    return(as_togoid_enrichment(empty_enrichment(with_cluster), metadata))
   }
 
   overlaps <- lapply(restricted, function(members) sort(members[members %in% query_set]))
@@ -135,7 +170,7 @@ togoid_enrich <- function(query_genes,
   overlap_count <- overlap_count[keep]
 
   if (length(restricted) == 0) {
-    return(empty_enrichment(with_cluster))
+    return(as_togoid_enrichment(empty_enrichment(with_cluster), metadata))
   }
 
   term_ids <- names(restricted)
@@ -169,7 +204,7 @@ togoid_enrich <- function(query_genes,
   result <- result[order(result$fdr, result$pvalue, -result$fold_enrichment), , drop = FALSE]
   result <- result[, intersect(togoid_enrichment_columns(), names(result)), drop = FALSE]
   rownames(result) <- NULL
-  as_togoid_enrichment(result)
+  as_togoid_enrichment(result, metadata)
 }
 
 #' Run enrichment for several clusters against a shared background
@@ -254,12 +289,22 @@ togoid_enrich_clusters <- function(cluster_genes,
     results[[length(results) + 1]] <- result
   }
 
+  metadata <- NULL
+  for (result in results) {
+    found <- togoid_enrichment_metadata(result)
+    if (length(found) > 0) {
+      metadata <- found
+      break
+    }
+  }
+
   combined <- do.call(rbind, results)
   if (is.null(combined) || nrow(combined) == 0) {
-    return(empty_enrichment(with_cluster = TRUE))
+    return(as_togoid_enrichment(empty_enrichment(with_cluster = TRUE), metadata))
   }
   rownames(combined) <- NULL
-  as_togoid_enrichment(combined)
+  # rbind() drops attributes, so re-attach the shared metadata.
+  as_togoid_enrichment(combined, metadata)
 }
 
 #' Order cluster labels numerically when possible
@@ -287,7 +332,7 @@ togoid_significant <- function(enrichment, alpha = 0.05, use = "fdr") {
   }
   result <- enrichment[enrichment[[use]] < alpha, , drop = FALSE]
   rownames(result) <- NULL
-  as_togoid_enrichment(result)
+  as_togoid_enrichment(result, togoid_enrichment_metadata(enrichment))
 }
 
 #' Keep the most significant terms of each cluster
@@ -305,7 +350,7 @@ togoid_top_terms <- function(enrichment, n = 3) {
     ordered <- enrichment[order(enrichment$fdr, enrichment$pvalue), , drop = FALSE]
     result <- utils::head(ordered, n)
     rownames(result) <- NULL
-    return(as_togoid_enrichment(result))
+    return(as_togoid_enrichment(result, togoid_enrichment_metadata(enrichment)))
   }
 
   parts <- lapply(split(enrichment, enrichment$cluster), function(part) {
@@ -314,7 +359,7 @@ togoid_top_terms <- function(enrichment, n = 3) {
   })
   result <- do.call(rbind, parts)
   rownames(result) <- NULL
-  as_togoid_enrichment(result)
+  as_togoid_enrichment(result, togoid_enrichment_metadata(enrichment))
 }
 
 #' Format an enrichment result for display
@@ -504,6 +549,81 @@ togoid_cluster_table <- function(enrichment, top_n = 3, alpha = 0.05) {
   result
 }
 
+#' Build the provenance header for a written table
+#'
+#' The TogoID API sits in front of annotation databases that are updated, so the
+#' same analysis run a month later can legitimately give different numbers.
+#' Recording when the API was queried, and with what options, is what makes a
+#' result file interpretable later.
+#'
+#' @param enrichment An enrichment data frame.
+#' @param extra Named list of further entries to append.
+#'
+#' @return A character vector of `#`-prefixed comment lines.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' cat(togoid_enrichment_header(results), sep = "\n")
+#' }
+togoid_enrichment_header <- function(enrichment, extra = list()) {
+  info <- c(
+    list(
+      generated_at = togoid_timestamp(),
+      togoid_version = as.character(utils::packageVersion("togoid"))
+    ),
+    togoid_enrichment_metadata(enrichment),
+    extra
+  )
+  info$n_terms <- nrow(enrichment)
+  if ("cluster" %in% names(enrichment) && nrow(enrichment) > 0) {
+    info$n_clusters <- length(unique(enrichment$cluster))
+  }
+
+  # Metadata carried over from an earlier step repeats keys such as
+  # generated_at; keep the first, which is the one generated just now.
+  info <- info[!duplicated(names(info))]
+
+  c(
+    "# togoid enrichment results",
+    vapply(names(info), function(key) {
+      sprintf("# %s: %s", key, paste(as.character(info[[key]]), collapse = ", "))
+    }, character(1), USE.NAMES = FALSE)
+  )
+}
+
+#' Read the provenance header back from a written table
+#'
+#' @param path Path to a file written by [togoid_write_enrichment()].
+#'
+#' @return A named list of header values; empty when the file has no header.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' togoid_read_metadata("enrichment.tsv")$api_retrieved_at
+#' }
+togoid_read_metadata <- function(path) {
+  lines <- readLines(path, warn = FALSE)
+  header <- lines[startsWith(lines, "#")]
+  # Stop at the first non-comment line, so a "#" inside the data is ignored.
+  first_data <- which(!startsWith(lines, "#"))
+  if (length(first_data) > 0) {
+    header <- lines[seq_len(first_data[1] - 1)]
+  }
+
+  metadata <- list()
+  for (line in header) {
+    text <- trimws(sub("^#", "", line))
+    if (grepl(":", text, fixed = TRUE)) {
+      key <- trimws(sub(":.*$", "", text))
+      value <- trimws(sub("^[^:]*:", "", text))
+      metadata[[key]] <- value
+    }
+  }
+  metadata
+}
+
 #' Write an enrichment result to a delimited text file
 #'
 #' Tabs rather than commas by default: term labels routinely contain commas,
@@ -512,6 +632,11 @@ togoid_cluster_table <- function(enrichment, top_n = 3, alpha = 0.05) {
 #' @param enrichment An enrichment data frame.
 #' @param path Destination file path.
 #' @param sep Field separator; tab by default.
+#' @param header Write the `#` provenance header from
+#'   [togoid_enrichment_header()]. Read such a file back with
+#'   `read.delim(path, comment.char = "#")`, or pass `FALSE` for consumers that
+#'   cannot skip comment lines.
+#' @param extra_header Named list of further header entries.
 #'
 #' @return The path, invisibly.
 #' @export
@@ -520,14 +645,24 @@ togoid_cluster_table <- function(enrichment, top_n = 3, alpha = 0.05) {
 #' \dontrun{
 #' togoid_write_enrichment(results, "enrichment.tsv")
 #' }
-togoid_write_enrichment <- function(enrichment, path, sep = "\t") {
+togoid_write_enrichment <- function(enrichment, path, sep = "\t",
+                                    header = TRUE, extra_header = list()) {
   directory <- dirname(path)
   if (!dir.exists(directory)) {
     dir.create(directory, recursive = TRUE)
   }
+
+  # Write through one open connection: write.table(append = TRUE) would warn
+  # about appending column names, and this keeps the file in a single pass.
+  connection <- file(path, open = "wt", encoding = "UTF-8")
+  on.exit(close(connection), add = TRUE)
+
+  if (isTRUE(header)) {
+    writeLines(togoid_enrichment_header(enrichment, extra_header), connection)
+  }
   utils::write.table(
     as.data.frame(unclass(enrichment), stringsAsFactors = FALSE),
-    file = path, sep = sep, quote = FALSE, row.names = FALSE, na = ""
+    file = connection, sep = sep, quote = FALSE, row.names = FALSE, na = ""
   )
   invisible(path)
 }
@@ -546,7 +681,8 @@ togoid_write_enrichment <- function(enrichment, path, sep = "\t") {
 #' cat(togoid_enrichment_summary(results))
 #' }
 togoid_enrichment_summary <- function(enrichment, alpha = 0.05, top = 5) {
-  lines <- c("Enrichment summary", strrep("=", 60), "")
+  lines <- c(togoid_enrichment_header(enrichment), "",
+             "Enrichment summary", strrep("=", 60), "")
 
   if (nrow(enrichment) == 0) {
     return(paste(c(lines, "No terms tested.", ""), collapse = "\n"))

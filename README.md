@@ -496,6 +496,56 @@ To export exactly what a figure shows, pass the same filters to
 writing `<figure-name>.tsv` and `<figure-name>_by_cluster.tsv` beside every
 figure, so the table and the picture can never disagree.
 
+### Provenance: when the API was queried
+
+The TogoID API sits in front of annotation databases that are updated, so the
+same analysis run a month later can legitimately give different numbers. Every
+written table therefore carries a `#` header recording when the API was queried
+and with what options:
+
+```
+# togoid enrichment results
+# generated_at: 2026-10-06T16:31:01+0900
+# togoid_version: 1.0.0
+# api_retrieved_at: 2026-10-06T16:29:38+0900
+# api_base_url: https://api.togoid.dbcls.jp
+# route: ncbigene -> uniprot -> reactome_pathway
+# target_dataset: reactome_pathway
+# taxonomy: 9606
+# min_set_size: 5
+# max_set_size: 500
+# background_size: 727
+# background: library genes
+cluster	term_id	term_label	...
+```
+
+`generated_at` is when the file was written; `api_retrieved_at` is when the gene
+sets were actually fetched. They differ whenever a cached library is reused — the
+retrieval date travels with the cache, so reloading a months-old library does not
+make it look fresh.
+
+```r
+togoid_read_metadata("enrichment.tsv")$api_retrieved_at
+togoid_enrichment_metadata(results)        # before writing anything
+```
+
+Read the data past the header with `read.delim(path, comment.char = "#")`, or
+write without one via `togoid_write_enrichment(results, path, header = FALSE)`.
+
+Output file names are date-stamped, so re-running against an updated API adds a
+file rather than overwriting the earlier result:
+
+```
+results/03_genesets_reactome_20261006.json
+results/03_enrichment_reactome_all_20261006.tsv
+results/04_umap_enrichment_reactome_top3_20261006.pdf
+results/04_umap_enrichment_reactome_top3_20261006.tsv
+```
+
+Both example steps take a date-stamp argument (default today, `""` to omit it).
+Step 4 picks the most recent step-3 file automatically and passes its
+`api_retrieved_at` into its own headers.
+
 ### Seurat Adapters
 
 The enrichment code knows nothing about Seurat; these adapters do the translation
@@ -537,6 +587,8 @@ makes the FDR values comparable between them.
 - `togoid_significant()`, `togoid_top_terms()`, `togoid_enrichment_summary()` - Result helpers
 - `togoid_cluster_table()` - Wide table, one row per cluster
 - `togoid_write_enrichment()` - Write a result as TSV (or any separator)
+- `togoid_enrichment_header()`, `togoid_read_metadata()`, `togoid_enrichment_metadata()` - Provenance
+- `togoid_timestamp()` - ISO 8601 timestamp used for the API retrieval date
 - `print()` / `format()` - Console-friendly views of a result
 - `togoid_save_gene_sets()`, `togoid_load_gene_sets()` - Cache a library
 - `togoid_filter_gene_sets()`, `togoid_gene_set_genes()`, `togoid_term_labels()` - Library helpers

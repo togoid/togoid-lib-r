@@ -271,6 +271,61 @@ togoid_cluster_table(results, top_n = 3, alpha = 0.05)
 
 This is the shape you want when labelling clusters or reading a figure as a table.
 
+### Provenance headers
+
+The TogoID API sits in front of annotation databases that are updated, so the
+same analysis run a month later can legitimately give different numbers. Every
+written table carries a `#` header saying when the API was queried and with what
+options, so the file stays interpretable later.
+
+```{r header}
+togoid_enrichment_header(results)                 # the lines that will be written
+togoid_write_enrichment(results, "enrichment.tsv")          # header included
+togoid_write_enrichment(results, "plain.tsv", header = FALSE)
+```
+
+| Key | Meaning |
+|---|---|
+| `generated_at` | When this file was written |
+| `api_retrieved_at` | When the gene sets were fetched from TogoID |
+| `api_base_url` | Which endpoint they came from |
+| `route`, `target_dataset`, `taxonomy`, `term_filters` | How they were built |
+| `library_n_terms`, `library_n_genes`, `library_n_unmapped_genes` | Size of the library |
+| `min_set_size`, `max_set_size`, `min_overlap` | Term filters used for the test |
+| `background_size`, `background` | The universe the p-values were computed against |
+| `n_terms`, `n_clusters` | Size of this result |
+
+The two dates differ whenever a cached library is reused: `retrieved_at` travels
+with the JSON, so reloading a months-old library does not make it look fresh.
+
+```{r provenance}
+gene_sets$retrieved_at                    # on the library itself
+togoid_enrichment_metadata(results)       # on a result, before writing
+togoid_read_metadata("enrichment.tsv")    # back out of a written file
+```
+
+Read the data past the header with `comment.char`:
+
+```{r readback}
+read.delim("enrichment.tsv", comment.char = "#")
+```
+
+### Date-stamped file names
+
+The example pipeline stamps its outputs with the run date, so re-running against
+an updated API adds a file rather than overwriting the earlier result:
+
+```
+results/03_genesets_reactome_20261006.json
+results/03_enrichment_reactome_all_20261006.tsv
+results/04_umap_enrichment_reactome_top3_20261006.pdf
+results/04_umap_enrichment_reactome_top3_20261006.tsv
+```
+
+Both steps take a date-stamp argument (default today's date, `""` to omit it).
+Step 4 locates the most recent step-3 file by itself, reads its header, and
+carries `api_retrieved_at` into its own outputs.
+
 ### Matching a figure exactly
 
 `togoid_plot_umap_enrichment()` picks the terms it draws with
