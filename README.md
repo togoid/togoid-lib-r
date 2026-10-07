@@ -270,34 +270,41 @@ data <- data |>
 ### Enrichment analysis and UMAP visualisation
 
 A TogoID route that ends in an annotation dataset *is* a gene-set library: every
-term it reaches becomes a set of the input genes that map to it. The whole
-analysis is four calls.
+term it reaches becomes a set of the input genes that map to it.
 
 ```r
 library(togoid)
 
+# Only the route changes between annotation databases:
+#   c("ncbigene", "uniprot", "reactome_pathway")  Reactome pathways
+#   c("ncbigene", "uniprot", "go")                GO terms
+#   c("ncbigene", "medgen", "mondo")              MONDO diseases
+# Any other route TogoID can reach works the same way. The three above also
+# have shortcuts: togoid_reactome_gene_sets(), togoid_go_gene_sets(),
+# togoid_mondo_gene_sets().
 gene_sets <- togoid_gene_sets(
   all_marker_genes,
   route = c("ncbigene", "uniprot", "reactome_pathway")
 )
+
+# Hypergeometric test per cluster, Benjamini-Hochberg corrected.
 results <- togoid_enrich_clusters(markers_per_cluster, gene_sets)
 
 figure <- togoid_plot_umap_enrichment(embedding, results, top_n = 3)
 ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
-```
 
-**Only the route changes** between annotation databases — `ncbigene -> uniprot ->
-go` for GO terms, `ncbigene -> medgen -> mondo` for diseases, and so on for
-anything else TogoID can reach. Presets exist for the three above
-(`togoid_reactome_gene_sets()` and friends).
+# The same terms as a table: these filters are the ones the figure used, so the
+# two cannot disagree.
+togoid_write_enrichment(
+  togoid_top_terms(togoid_significant(results, 0.05), 3),
+  "umap_enrichment.tsv"
+)
+```
 
 ![UMAP with enriched Reactome pathways](https://raw.githubusercontent.com/suimye/togoid-lib-r/docs-figures/umap_enrichment_reactome_r.png)
 
-Beside every figure the pipeline writes the same terms as a TSV, so the table and
-the picture cannot disagree.
-
-`vignette("enrichment", package = "togoid")` has the rest, and
-`system.file("examples/scRNAseq_enrichment", package = "togoid")` has a runnable
+See `vignette("enrichment", package = "togoid")`, and
+`system.file("examples/scRNAseq_enrichment", package = "togoid")` for a runnable
 pipeline on real data.
 
 ## API Reference
