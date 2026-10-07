@@ -293,21 +293,12 @@ anything else TogoID can reach. Presets exist for the three above
 
 ![UMAP with enriched Reactome pathways](https://raw.githubusercontent.com/suimye/togoid-lib-r/docs-figures/umap_enrichment_reactome_r.png)
 
-The left panel is the usual cluster UMAP; the right repeats it with each
-cluster's enriched terms written around its centroid, sized by significance.
 Beside every figure the pipeline writes the same terms as a TSV, so the table and
 the picture cannot disagree.
 
-Over-representation uses a hypergeometric test with Benjamini-Hochberg
-correction, implemented with `stats::phyper()` and `stats::p.adjust()` — the
-analysis adds no dependencies. `ggplot2` and `patchwork` are needed only for the
-figures, `Seurat` only for the adapters.
-
-`vignette("enrichment", package = "togoid")` covers the rest: gene-set caching,
-the provenance headers that record when the API was queried, TSV export, the
-Seurat adapters, choosing a background, and the full API.
-A runnable pipeline on real data is in
-`system.file("examples/scRNAseq_enrichment", package = "togoid")`.
+`vignette("enrichment", package = "togoid")` has the rest, and
+`system.file("examples/scRNAseq_enrichment", package = "togoid")` has a runnable
+pipeline on real data.
 
 ## API Reference
 
