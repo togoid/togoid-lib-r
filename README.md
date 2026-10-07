@@ -405,12 +405,6 @@ locally:
 NOT_CRAN=true Rscript -e 'devtools::test()'
 ```
 
-The enrichment feature is covered by `tests/testthat/test-enrichment.R` (offline:
-statistics, gene-set container, term selection, and a check that no two placed
-labels overlap) and `tests/testthat/test-enrichment-api.R` (live API: all three
-preset routes, the GO aspect filter, broken-route errors, and that T cell, B cell
-and myeloid marker genes recover the expected biology).
-
 ## License
 
 MIT License

@@ -1,4 +1,9 @@
 # Tests for the enrichment analysis that need no network access.
+#
+# Covers the statistics (against fisher.test()), the gene-set container and its
+# JSON round trip, the enrichment itself, term selection, the table and console
+# views, the provenance headers, and the word-cloud layout - including a check
+# that no two placed labels overlap.
 
 # A small hand-made library used by several tests.
 demo_gene_sets <- function() {
