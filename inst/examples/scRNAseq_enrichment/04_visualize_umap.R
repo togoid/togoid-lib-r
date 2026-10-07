@@ -94,9 +94,7 @@ save_tables <- function(enrichment, stem, top_n, metadata) {
     return(invisible(NULL))
   }
 
-  # Drop the layout-only columns that togoid_select_terms() adds.
-  long <- selected[, setdiff(names(selected), c("label", "weight")), drop = FALSE]
-  long <- long[order(cluster_order(long$cluster), long$fdr, long$pvalue), , drop = FALSE]
+  long <- togoid_selected_terms_table(selected)
 
   # Carry step 3's provenance forward and add what this step chose.
   long <- as_togoid_enrichment(long, metadata)
@@ -123,12 +121,6 @@ save_tables <- function(enrichment, stem, top_n, metadata) {
   write.table(wide, connection, sep = "\t", quote = FALSE, row.names = FALSE, na = "")
   close(connection)
   cat(sprintf("  wrote %s\n", wide_path))
-}
-
-# Numeric-aware cluster ordering, so cluster 10 does not sort between 1 and 2.
-cluster_order <- function(clusters) {
-  numeric_value <- suppressWarnings(as.numeric(clusters))
-  ifelse(is.na(numeric_value), Inf, numeric_value)
 }
 
 save_figure <- function(figure, stem, width, height) {

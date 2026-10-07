@@ -263,6 +263,47 @@ togoid_select_terms <- function(enrichment,
   selected
 }
 
+#' Flatten selected terms into rows, ordered for reading
+#'
+#' Use this to export exactly the terms a figure shows: pass the same filters to
+#' [togoid_select_terms()], and the table and the figure cannot disagree. The
+#' layout-only columns that `togoid_select_terms()` adds (`label`, `weight`) are
+#' dropped.
+#'
+#' The Python implementation exposes the same helper as
+#' `selected_terms_table()`.
+#'
+#' @param selected Output of [togoid_select_terms()].
+#'
+#' @return A data frame ordered by cluster and then significance.
+#' @export
+#'
+#' @examples
+#' enrichment <- data.frame(
+#'   cluster = c("1", "0", "0"),
+#'   term_id = c("R-HSA-2", "R-HSA-1", "R-HSA-3"),
+#'   term_label = c("BCR signalling", "TCR signalling", "Translation"),
+#'   pvalue = c(1e-5, 1e-6, 0.4),
+#'   fdr = c(1e-4, 1e-5, 0.5),
+#'   stringsAsFactors = FALSE
+#' )
+#'
+#' selected <- togoid_select_terms(enrichment, top_n = NULL, fdr_cutoff = 0.05)
+#' togoid_selected_terms_table(selected)
+togoid_selected_terms_table <- function(selected) {
+  if (nrow(selected) == 0) {
+    return(selected)
+  }
+
+  result <- selected[, setdiff(names(selected), c("label", "weight")), drop = FALSE]
+  result <- result[
+    order(cluster_sort_key(result$cluster), result$fdr, result$pvalue), ,
+    drop = FALSE
+  ]
+  rownames(result) <- NULL
+  result
+}
+
 #' Lay out term labels around cluster centroids
 #'
 #' Each label is measured once and tested against candidate positions spiralling

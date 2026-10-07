@@ -546,6 +546,41 @@ Both example steps take a date-stamp argument (default today, `""` to omit it).
 Step 4 picks the most recent step-3 file automatically and passes its
 `api_retrieved_at` into its own headers.
 
+### R 版との対応 / Equivalence with the R package
+
+The same analysis exists in [togoid-lib-python](https://github.com/togoid/togoid-lib-python).
+Both produce **identical numbers and identical files**: the same result columns,
+the same provenance header keys, the same wide-table columns, and a gene-set
+cache JSON that either language can read.
+
+The names differ because the languages differ — R exposes flat `togoid_*`
+functions where Python uses methods on objects, exactly as the existing
+`togoid_convert()` / `TogoIDConverter.convert()` pair already does.
+
+| Task | R | Python |
+|---|---|---|
+| Build gene sets | `togoid_gene_sets()` | `build_gene_sets()` |
+| Resolve labels | `togoid_map_labels()` | `map_labels_to_ids()` |
+| Presets | `togoid_reactome_gene_sets()` … | `reactome_gene_sets()` … |
+| Routes / GO aspects | `togoid_enrichment_routes()` / `togoid_go_aspects()` | `ROUTES` / `GO_ASPECTS` |
+| Column order | `togoid_enrichment_columns()` | `RESULT_COLUMNS` |
+| Enrichment | `togoid_enrich()` / `togoid_enrich_clusters()` | `enrich()` / `enrich_clusters()` |
+| Filter results | `togoid_significant()` / `togoid_top_terms()` | `.significant()` / `.top()` |
+| Summary | `togoid_enrichment_summary()` | `.summary()` |
+| Wide table | `togoid_cluster_table()` | `.to_cluster_table()` |
+| Write a table | `togoid_write_enrichment()` | `.to_tsv()` / `.to_csv()` |
+| Provenance header | `togoid_enrichment_header()` / `togoid_read_metadata()` | `.header_lines()` / `read_metadata()` |
+| Library provenance | `togoid_gene_set_provenance()` | `.provenance()` |
+| Cache | `togoid_save_gene_sets()` / `togoid_load_gene_sets()` | `.save_json()` / `.load_json()` |
+| Terms drawn on a figure | `togoid_select_terms()` / `togoid_selected_terms_table()` | `select_terms()` / `selected_terms_table()` |
+| Figures | `togoid_plot_umap_enrichment()` | `plot_umap_enrichment()` |
+| Single-cell adapters | `togoid_umap_from_seurat()` (Seurat) | `umap_dataframe_from_anndata()` (scanpy) |
+| Statistics | `togoid_hypergeometric_pvalue()` / `togoid_fdr()` | `hypergeometric_sf()` / `benjamini_hochberg()` |
+
+The two statistics functions are also reachable under the R names
+(`hypergeometric_pvalue`, `fdr`), so moving between the implementations does not
+mean learning two vocabularies.
+
 ### Seurat Adapters
 
 The enrichment code knows nothing about Seurat; these adapters do the translation

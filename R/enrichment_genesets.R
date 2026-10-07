@@ -37,13 +37,18 @@ local_id <- function(id) {
 #' behind it are updated, so a result is only reproducible together with the
 #' date it was retrieved.
 #'
-#' @return A string such as `"2026-09-17T18:42:31+0900"`.
+#' The offset carries a colon (`+09:00`), which is what RFC 3339 requires and
+#' what the Python implementation emits, so the two write byte-identical
+#' timestamps. R's `%z` gives `+0900`, so the colon is inserted here.
+#'
+#' @return A string such as `"2026-10-07T18:42:31+09:00"`.
 #' @export
 #'
 #' @examples
 #' togoid_timestamp()
 togoid_timestamp <- function() {
-  format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+  stamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%S%z")
+  sub("([+-][0-9]{2})([0-9]{2})$", "\\1:\\2", stamp)
 }
 
 #' Split a vector into batches
