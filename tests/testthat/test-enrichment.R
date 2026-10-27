@@ -807,3 +807,23 @@ test_that("the shipped example scripts only call exported functions", {
     }
   }
 })
+
+test_that("result helpers all keep clusters in natural order", {
+  # Cluster labels are numeric strings, so lexicographic sorting would put 10
+  # before 2. Every helper must agree with togoid_enrich_clusters().
+  rows <- do.call(rbind, lapply(c("0", "1", "2", "10", "14"), function(cluster) {
+    data.frame(
+      cluster = cluster,
+      term_id = paste0("T", cluster, c("a", "b")),
+      term_label = paste("term", c("a", "b")),
+      pvalue = c(1e-8, 1e-4), fdr = c(1e-7, 1e-3),
+      stringsAsFactors = FALSE
+    )
+  }))
+  enrichment <- as_togoid_enrichment(rows)
+  expected <- c("0", "1", "2", "10", "14")
+
+  expect_equal(unique(togoid_significant(enrichment)$cluster), expected)
+  expect_equal(unique(togoid_top_terms(enrichment, 1)$cluster), expected)
+  expect_equal(togoid_cluster_table(enrichment, top_n = 1)$cluster, expected)
+})

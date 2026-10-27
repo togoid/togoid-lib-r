@@ -420,11 +420,14 @@ togoid_top_terms <- function(enrichment, n = 3) {
     return(as_togoid_enrichment(result, togoid_enrichment_metadata(enrichment)))
   }
 
+  # split() orders its pieces lexicographically, which would put cluster 10
+  # before cluster 2; restore the natural order the other helpers use.
   parts <- lapply(split(enrichment, enrichment$cluster), function(part) {
     part <- part[order(part$fdr, part$pvalue), , drop = FALSE]
     utils::head(part, n)
   })
   result <- do.call(rbind, parts)
+  result <- result[cluster_sort_key(result$cluster), , drop = FALSE]
   rownames(result) <- NULL
   as_togoid_enrichment(result, togoid_enrichment_metadata(enrichment))
 }
