@@ -50,12 +50,28 @@ empty_enrichment <- function(with_cluster = FALSE) {
 #' The result stays an ordinary data frame — every dplyr and base operation keeps
 #' working — and only gains a `print` method that formats it for the console.
 #'
+#' Needed when results are read back from an exported table: the rows arrive as a
+#' plain data frame and the provenance as a separate list (see
+#' [togoid_read_metadata()]), so reattaching it here lets
+#' [togoid_write_enrichment()] carry the original API date forward. This is the
+#' counterpart of `EnrichmentResult(rows, ..., metadata=...)` in the Python
+#' package.
+#'
 #' @param x A data frame of enrichment results.
 #' @param metadata Named list of provenance and options; kept as an attribute
 #'   and written into the header of exported tables. `NULL` keeps what `x` has.
 #'
 #' @return The same data frame with class `togoid_enrichment` added.
-#' @keywords internal
+#' @export
+#'
+#' @examples
+#' rows <- data.frame(
+#'   cluster = "0", term_id = "R-HSA-114608", pvalue = 1e-6, fdr = 1e-5
+#' )
+#' restored <- as_togoid_enrichment(
+#'   rows, list(api_retrieved_at = "2026-10-27T09:00:00+09:00")
+#' )
+#' togoid_enrichment_metadata(restored)
 as_togoid_enrichment <- function(x, metadata = NULL) {
   if (!inherits(x, "togoid_enrichment")) {
     class(x) <- unique(c("togoid_enrichment", class(x)))

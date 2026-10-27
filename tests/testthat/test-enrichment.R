@@ -755,3 +755,55 @@ test_that("the CSV adapters round-trip", {
   unlink(c(umap_path, markers_path), force = TRUE)
   unlink(lists_dir, recursive = TRUE)
 })
+
+test_that("provenance can be reattached to results read back from a table", {
+  rows <- data.frame(
+    cluster = "0", term_id = "R-HSA-1", pvalue = 1e-6, fdr = 1e-5,
+    stringsAsFactors = FALSE
+  )
+  metadata <- list(api_retrieved_at = "2026-10-27T09:00:00+09:00")
+
+  restored <- as_togoid_enrichment(rows, metadata)
+  expect_s3_class(restored, "togoid_enrichment")
+  expect_equal(togoid_enrichment_metadata(restored)$api_retrieved_at,
+               metadata$api_retrieved_at)
+  # The header of an exported table must carry the reattached date, which is the
+  # whole point of reattaching it.
+  expect_true(any(grepl(metadata$api_retrieved_at,
+                        togoid_enrichment_header(restored), fixed = TRUE)))
+
+  # NULL keeps what the object already has rather than clearing it.
+  expect_equal(togoid_enrichment_metadata(as_togoid_enrichment(restored))$api_retrieved_at,
+               metadata$api_retrieved_at)
+})
+
+test_that("the shipped example scripts only call exported functions", {
+  # A script that reaches for an internal helper works while developing but
+  # breaks for anyone who installs the package, so guard against it here.
+  scripts <- list.files(
+    system.file("examples", package = "togoid"),
+    pattern = "\\.R$", recursive = TRUE, full.names = TRUE
+  )
+  skip_if(length(scripts) == 0, "examples are not installed")
+
+  exported <- getNamespaceExports("togoid")
+  defined_in_script <- function(text, name) {
+    any(grepl(sprintf("^\\s*%s\\s*(<-|=)\\s*function", name), text))
+  }
+
+  for (script in scripts) {
+    text <- readLines(script, warn = FALSE)
+    called <- unique(unlist(regmatches(
+      text, gregexpr("\\b(as_)?togoid[a-zA-Z0-9_.]*(?=\\s*\\()", text, perl = TRUE)
+    )))
+    called <- setdiff(called, c("togoid", "togoid_api_base_url"))
+    for (name in called) {
+      if (defined_in_script(text, name)) next
+      expect_true(
+        name %in% exported,
+        info = sprintf("%s() is not exported but is called in %s",
+                       name, basename(script))
+      )
+    }
+  }
+})
