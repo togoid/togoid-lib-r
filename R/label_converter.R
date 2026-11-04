@@ -452,18 +452,18 @@ LabelConverter <- R6::R6Class(
   ),
 
   private = list(
-    #' Cached dataset configuration
+    # Cached dataset configuration
     dataset_cache = NULL,
 
-    #' PubDictionaries base URL
+    # PubDictionaries base URL
     pubdict_base_url = NULL,
 
-    #' SPARQList base URL
+    # SPARQList base URL
     sparqlist_base_url = NULL,
 
-    #' Get dataset configuration from API
-    #'
-    #' @return Dataset configuration list
+    # Get dataset configuration from API
+    #
+    # @return Dataset configuration list
     get_dataset_config = function() {
       if (!is.null(private$dataset_cache)) {
         return(private$dataset_cache)
@@ -483,21 +483,21 @@ LabelConverter <- R6::R6Class(
       return(response)
     },
 
-    #' Check if SPARQList should be used for dataset
-    #'
-    #' @param dataset_config Dataset configuration
-    #'
-    #' @return TRUE if SPARQList should be used
+    # Check if SPARQList should be used for dataset
+    #
+    # @param dataset_config Dataset configuration
+    #
+    # @return TRUE if SPARQList should be used
     should_use_sparqlist = function(dataset_config) {
       label_resolver <- dataset_config$label_resolver %||% list()
       return(!is.null(label_resolver$sparqlist))
     },
 
-    #' Convert results list to data.frame
-    #'
-    #' @param results List of result lists
-    #'
-    #' @return data.frame
+    # Convert results list to data.frame
+    #
+    # @param results List of result lists
+    #
+    # @return data.frame
     convert_to_dataframe = function(results) {
       if (length(results) == 0) {
         return(data.frame())

@@ -379,14 +379,14 @@ TogoIDConverter <- R6::R6Class(
   ),
 
   private = list(
-    #' Format response to requested output format
-    #'
-    #' @param response API response
-    #' @param format Requested format
-    #' @param route Conversion route
-    #' @param ids Source IDs
-    #'
-    #' @return Formatted response
+    # Format response to requested output format
+    #
+    # @param response API response
+    # @param format Requested format
+    # @param route Conversion route
+    # @param ids Source IDs
+    #
+    # @return Formatted response
     format_response = function(response, format, route, ids, annotate = NULL) {
       format <- normalize_format(format)
 
@@ -400,13 +400,13 @@ TogoIDConverter <- R6::R6Class(
       )
     },
 
-    #' Convert response to list format
-    #'
-    #' @param response API response
-    #' @param route Conversion route
-    #' @param ids Source IDs
-    #'
-    #' @return List with ids, route, and results
+    # Convert response to list format
+    #
+    # @param response API response
+    # @param route Conversion route
+    # @param ids Source IDs
+    #
+    # @return List with ids, route, and results
     convert_to_list = function(response, route, ids) {
       list(
         ids = ids,
@@ -415,11 +415,11 @@ TogoIDConverter <- R6::R6Class(
       )
     },
 
-    #' Convert response to table (list of vectors)
-    #'
-    #' @param response API response
-    #'
-    #' @return List of character vectors
+    # Convert response to table (list of vectors)
+    #
+    # @param response API response
+    #
+    # @return List of character vectors
     convert_to_table = function(response) {
       if (is.list(response) && "results" %in% names(response)) {
         return(response$results)
@@ -427,12 +427,12 @@ TogoIDConverter <- R6::R6Class(
       return(response)
     },
 
-    #' Convert response to data.frame
-    #'
-    #' @param response API response
-    #' @param route Conversion route
-    #'
-    #' @return data.frame
+    # Convert response to data.frame
+    #
+    # @param response API response
+    # @param route Conversion route
+    #
+    # @return data.frame
     convert_to_dataframe = function(response, route, expanded_route = NULL) {
       table_data <- private$convert_to_table(response)
 
@@ -496,23 +496,23 @@ TogoIDConverter <- R6::R6Class(
       return(df)
     },
 
-    #' Convert response to tibble
-    #'
-    #' @param response API response
-    #' @param route Conversion route
-    #'
-    #' @return tibble
+    # Convert response to tibble
+    #
+    # @param response API response
+    # @param route Conversion route
+    #
+    # @return tibble
     convert_to_tibble = function(response, route, expanded_route = NULL) {
       df <- private$convert_to_dataframe(response, route, expanded_route)
       return(tibble::as_tibble(df))
     },
 
-    #' Format ortholog result
-    #'
-    #' @param filtered Filtered results
-    #' @param format Output format
-    #'
-    #' @return Formatted ortholog result
+    # Format ortholog result
+    #
+    # @param filtered Filtered results
+    # @param format Output format
+    #
+    # @return Formatted ortholog result
     format_ortholog_result = function(filtered, format) {
       if (format == "dataframe" || format == "tibble") {
         if (length(filtered) == 0) {
@@ -544,12 +544,12 @@ TogoIDConverter <- R6::R6Class(
       return(filtered)
     },
 
-    #' Build expanded route with annotation column names
-    #'
-    #' @param route Original conversion route
-    #' @param annotate Annotation specifications
-    #'
-    #' @return Expanded route vector with annotation column names inserted
+    # Build expanded route with annotation column names
+    #
+    # @param route Original conversion route
+    # @param annotate Annotation specifications
+    #
+    # @return Expanded route vector with annotation column names inserted
     build_expanded_route = function(route, annotate) {
       if (is.null(annotate)) return(route)
 
@@ -577,14 +577,14 @@ TogoIDConverter <- R6::R6Class(
       return(expanded)
     },
 
-    #' Add annotations to conversion results
-    #'
-    #' @param response API response
-    #' @param route Conversion route
-    #' @param annotate Annotation specifications: list(list("dataset", "field"), ...)
-    #' @param filter Filter specifications: list(list("dataset", "field", c("values")), ...)
-    #'
-    #' @return Response with annotations
+    # Add annotations to conversion results
+    #
+    # @param response API response
+    # @param route Conversion route
+    # @param annotate Annotation specifications: list(list("dataset", "field"), ...)
+    # @param filter Filter specifications: list(list("dataset", "field", c("values")), ...)
+    #
+    # @return Response with annotations
     add_annotations = function(response, route, annotate, filter) {
       # Extract table data from response
       if (is.list(response) && "results" %in% names(response)) {

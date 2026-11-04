@@ -126,6 +126,7 @@ normalize_format <- function(format) {
 #'
 #' @return x if not NULL, otherwise y
 #' @keywords internal
+#' @noRd
 `%||%` <- function(x, y) {
   if (is.null(x)) y else x
 }

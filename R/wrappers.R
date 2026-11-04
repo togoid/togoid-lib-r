@@ -124,6 +124,10 @@ togoid_list_fields <- function(dataset) {
 #' @param labels Character vector of labels to convert
 #' @param dataset Dataset name (e.g., "ncbigene", "chebi")
 #' @param taxonomy Taxonomy ID (e.g., "9606" for human)
+#' @param label_types Character vector of label types to search. For SPARQList
+#'   datasets these are label types (e.g., c("symbol", "synonym")); for
+#'   PubDictionaries datasets they are dictionary names. Defaults to the
+#'   dataset's own configuration when NULL.
 #' @param format Output format: "list" or "dataframe" (default: "dataframe")
 #' @param ... Additional parameters passed to LabelConverter$convert()
 #'

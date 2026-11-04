@@ -282,12 +282,12 @@ AnnotationsConverter <- R6::R6Class(
   ),
 
   private = list(
-    #' Cached dataset configuration
+    # Cached dataset configuration
     dataset_config = NULL,
 
-    #' Get dataset configuration from API
-    #'
-    #' @return Dataset configuration
+    # Get dataset configuration from API
+    #
+    # @return Dataset configuration
     get_dataset_config = function() {
       url <- paste0(self$api_endpoint, "/config/dataset")
 
@@ -305,13 +305,13 @@ AnnotationsConverter <- R6::R6Class(
       return(response)
     },
 
-    #' Build GraphQL query
-    #'
-    #' @param dataset_name Dataset name
-    #' @param fields Fields to select
-    #' @param filters Filters to apply
-    #'
-    #' @return List with query and variables template
+    # Build GraphQL query
+    #
+    # @param dataset_name Dataset name
+    # @param fields Fields to select
+    # @param filters Filters to apply
+    #
+    # @return List with query and variables template
     build_query = function(dataset_name, fields, filters) {
 
       # Remove duplicates and "id"
@@ -352,12 +352,12 @@ AnnotationsConverter <- R6::R6Class(
       list(query = query, variables = variables)
     },
 
-    #' Execute GraphQL request
-    #'
-    #' @param query GraphQL query string
-    #' @param variables GraphQL variables
-    #'
-    #' @return GraphQL response
+    # Execute GraphQL request
+    #
+    # @param query GraphQL query string
+    # @param variables GraphQL variables
+    #
+    # @return GraphQL response
     execute_graphql = function(query, variables) {
 
       body <- list(
@@ -394,12 +394,12 @@ AnnotationsConverter <- R6::R6Class(
       )
     },
 
-    #' Apply filters to records
-    #'
-    #' @param records Named list of records
-    #' @param filters Named list of filters
-    #'
-    #' @return Filtered records
+    # Apply filters to records
+    #
+    # @param records Named list of records
+    # @param filters Named list of filters
+    #
+    # @return Filtered records
     apply_filters = function(records, filters) {
       filtered_records <- list()
 
@@ -438,17 +438,17 @@ AnnotationsConverter <- R6::R6Class(
       return(filtered_records)
     },
 
-    #' Convert records to data.frame
-    #'
-    #' Multi-valued fields (returned as lists from GraphQL) are kept as
-    #' list-columns so each cell stays a vector rather than a comma-joined
-    #' string. Missing fields yield NA in the corresponding cell, and IDs
-    #' without any record yield rows of NA values.
-    #'
-    #' @param records Named list of records
-    #' @param fields Field names
-    #'
-    #' @return data.frame
+    # Convert records to data.frame
+    #
+    # Multi-valued fields (returned as lists from GraphQL) are kept as
+    # list-columns so each cell stays a vector rather than a comma-joined
+    # string. Missing fields yield NA in the corresponding cell, and IDs
+    # without any record yield rows of NA values.
+    #
+    # @param records Named list of records
+    # @param fields Field names
+    #
+    # @return data.frame
     records_to_dataframe = function(records, fields) {
       if (length(records) == 0) {
         return(data.frame())
