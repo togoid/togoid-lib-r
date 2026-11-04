@@ -4,7 +4,8 @@
 #'
 #' @param ids Character vector of source IDs
 #' @param route Character vector of database names forming the conversion route
-#' @param format Output format: "json", "list", "table", "dataframe", "tibble"
+#' @param format Output format: "dataframe" (default), "tibble", or "list".
+#'   Specifying "json" or "table" raises an error.
 #' @param ... Additional parameters passed to TogoIDConverter$convert()
 #'
 #' @return Converted IDs in specified format
@@ -123,6 +124,10 @@ togoid_list_fields <- function(dataset) {
 #' @param labels Character vector of labels to convert
 #' @param dataset Dataset name (e.g., "ncbigene", "chebi")
 #' @param taxonomy Taxonomy ID (e.g., "9606" for human)
+#' @param label_types Character vector of label types to search. For SPARQList
+#'   datasets these are label types (e.g., c("symbol", "synonym")); for
+#'   PubDictionaries datasets they are dictionary names. Defaults to the
+#'   dataset's own configuration when NULL.
 #' @param format Output format: "list" or "dataframe" (default: "dataframe")
 #' @param ... Additional parameters passed to LabelConverter$convert()
 #'
@@ -138,9 +143,11 @@ togoid_list_fields <- function(dataset) {
 #'   taxonomy = "9606"
 #' )
 #' }
-togoid_label2id <- function(labels, dataset, taxonomy = NULL, format = "dataframe", ...) {
+togoid_label2id <- function(labels, dataset, taxonomy = NULL, label_types = NULL,
+                            format = "dataframe", ...) {
   converter <- LabelConverter$new()
-  converter$convert(labels = labels, dataset = dataset, taxonomy = taxonomy, format = format, ...)
+  converter$convert(labels = labels, dataset = dataset, taxonomy = taxonomy,
+                    label_types = label_types, format = format, ...)
 }
 
 #' Search databases by name
