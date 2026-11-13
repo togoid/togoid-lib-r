@@ -19,24 +19,25 @@ produce the same numbers from the same gene lists.
 
 ## Data
 
-The example uses the 10x Genomics public PBMC dataset. It is **not** included in
-this repository; download it from 10x Genomics and note the licence terms on
-their site.
+By default the example uses **pbmc4k**, the 4,340-cell PBMC dataset from the
+[TENxPBMCData](https://bioconductor.org/packages/TENxPBMCData/) package. Nothing
+has to be downloaded by hand: step 1 pulls it through Bioconductor, which caches
+it locally and versions it, so the figures below are reproducible — run the
+pipeline with no arguments and you start from the same counts.
 
-```bash
-mkdir -p data && cd data
-# Pick any "Filtered feature-barcode matrix (MTX)" PBMC dataset from
-# https://www.10xgenomics.com/datasets and unpack it here, so that you end up
-# with a directory containing barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz
-tar -xzf filtered_feature_bc_matrix.tar.gz
-```
+Step 1 also writes those counts back out in 10x format
+(`results/01_matrix_10x/`), which is what the Python version of this example
+reads. Both languages therefore run on one input, and their numbers can be
+compared directly.
 
-Any 10x-format directory works — only step 1 touches the raw data.
+To use your own data instead, pass a directory holding `barcodes.tsv.gz`,
+`features.tsv.gz` and `matrix.mtx.gz`. Only step 1 touches the raw counts.
 
 ## Requirements
 
 ```r
 install.packages(c("Seurat", "ggplot2", "patchwork"))
+BiocManager::install("TENxPBMCData")   # only for the default pbmc4k source
 # plus togoid itself
 ```
 
@@ -46,16 +47,22 @@ itself needs nothing beyond the package's own imports.
 ## Running the pipeline
 
 ```bash
-./run_pipeline.sh path/to/filtered_feature_bc_matrix results
+./run_pipeline.sh
 ```
 
 or step by step:
 
 ```bash
-Rscript 01_clustering.R     path/to/filtered_feature_bc_matrix results
+Rscript 01_clustering.R     pbmc4k  results
 Rscript 02_find_markers.R   results
 Rscript 03_enrichment.R     results
 Rscript 04_visualize_umap.R results 3
+```
+
+With your own 10x matrix, replace `pbmc4k` with the directory:
+
+```bash
+./run_pipeline.sh path/to/filtered_feature_bc_matrix results
 ```
 
 Steps 1 and 2 need Seurat; steps 3 and 4 do not, and read only the CSV files the
@@ -213,6 +220,8 @@ See `vignette("enrichment", package = "togoid")` for the full manual.
 
 ## Licence note
 
-The 10x Genomics PBMC data is distributed by 10x Genomics under their own terms.
-Check the licence on the dataset page before redistributing it or the results
-derived from it. Nothing from that dataset is included in this repository.
+pbmc4k is 10x Genomics data redistributed by the `TENxPBMCData` package; see
+that package for its terms. If you supply your own matrix from
+[10x Genomics](https://www.10xgenomics.com/datasets) instead, check the licence
+on its dataset page before redistributing it or results derived from it. No
+counts are included in this repository.
