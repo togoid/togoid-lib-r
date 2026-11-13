@@ -44,10 +44,8 @@ cat(strrep("=", 60), "\n")
 cat("Step 1: clustering and UMAP\n")
 cat(strrep("=", 60), "\n")
 
-# Pull the counts from Bioconductor rather than a hand-downloaded directory.
-# Errors here are fatal on purpose: an earlier version of this example fell back
-# to local data when the package was missing, so every run silently used
-# something other than the dataset the documentation named.
+# Pull the counts from Bioconductor. A missing package stops the run rather than
+# quietly substituting other data, so the counts are always the ones named here.
 load_pbmc4k <- function() {
   for (pkg in c("TENxPBMCData", "SingleCellExperiment")) {
     if (!requireNamespace(pkg, quietly = TRUE)) {
