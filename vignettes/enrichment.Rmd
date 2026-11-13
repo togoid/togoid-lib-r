@@ -429,11 +429,13 @@ figures above.
 
 ```bash
 cd $(Rscript -e 'cat(system.file("examples/scRNAseq_enrichment", package = "togoid"))')
-./run_pipeline.sh path/to/filtered_feature_bc_matrix results
+./run_pipeline.sh
 ```
 
-The dataset is the 10x Genomics public PBMC data, which is not redistributed with
-this package; the example's README links to it and notes the licence terms.
+With no arguments it uses pbmc4k from the `TENxPBMCData` package, so the run
+needs no manual download and reproduces the figures above. Pass a 10x matrix
+directory instead to use your own counts. See the example's README for the
+licence terms of either source.
 
 ## API reference
 

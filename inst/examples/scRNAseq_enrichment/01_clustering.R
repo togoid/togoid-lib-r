@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 #
-# Step 1: cluster a 10x Genomics scRNA-seq dataset and compute a UMAP embedding.
+# Step 1: cluster a PBMC scRNA-seq dataset and compute a UMAP embedding.
 #
 # This step uses Seurat only; TogoID enters the pipeline in step 3. The
 # clustering produced here is reused unchanged by every later step, so that the
@@ -8,7 +8,17 @@
 # came from.
 #
 # Usage:
-#   Rscript 01_clustering.R <10x-matrix-dir> [results-dir]
+#   Rscript 01_clustering.R [source] [results-dir]
+#
+# `source` is either
+#   pbmc4k            the 4k PBMC dataset from the TENxPBMCData package
+#                     (the default), or
+#   <10x-matrix-dir>  a directory holding barcodes/features/matrix files.
+#
+# The default needs no manual download and is versioned by Bioconductor, so the
+# figures in this example are reproducible: anyone who runs the pipeline with no
+# arguments starts from the same counts. Step 1 also writes those counts out in
+# 10x format, so the Python version of this example can read the same input.
 
 suppressPackageStartupMessages({
   library(Seurat)
@@ -16,11 +26,7 @@ suppressPackageStartupMessages({
 })
 
 args <- commandArgs(trailingOnly = TRUE)
-if (length(args) < 1) {
-  stop("Usage: Rscript 01_clustering.R <10x-matrix-dir> [results-dir]", call. = FALSE)
-}
-
-data_dir <- args[1]
+source_arg <- if (length(args) >= 1) args[1] else "pbmc4k"
 results_dir <- if (length(args) >= 2) args[2] else "results"
 
 # Quality-control thresholds, matching the Python version of this example.
@@ -38,8 +44,76 @@ cat(strrep("=", 60), "\n")
 cat("Step 1: clustering and UMAP\n")
 cat(strrep("=", 60), "\n")
 
-cat(sprintf("Loading 10x data from %s\n", data_dir))
-counts <- Read10X(data.dir = data_dir)
+# Pull the counts from Bioconductor rather than a hand-downloaded directory.
+# Errors here are fatal on purpose: an earlier version of this example fell back
+# to local data when the package was missing, so every run silently used
+# something other than the dataset the documentation named.
+load_pbmc4k <- function() {
+  for (pkg in c("TENxPBMCData", "SingleCellExperiment")) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+      stop(sprintf(paste0(
+        "package '%s' is required for the 'pbmc4k' source.\n",
+        "  Install it with:  BiocManager::install(\"%s\")\n",
+        "  Or pass the path to a 10x matrix directory instead."
+      ), pkg, pkg), call. = FALSE)
+    }
+  }
+
+  sce <- TENxPBMCData::TENxPBMCData("pbmc4k")
+  counts <- SingleCellExperiment::counts(sce)
+
+  # Rows arrive as Ensembl IDs and the columns are unnamed; step 3 hands gene
+  # symbols to TogoID, so switch to the symbols the dataset ships. Taking
+  # Symbol_TENx and filling its gaps with the Ensembl ID reproduces what
+  # Read10X() does with the same data's features.tsv.
+  symbols <- SummarizedExperiment::rowData(sce)$Symbol_TENx
+  missing <- is.na(symbols) | symbols == ""
+  symbols[missing] <- rownames(sce)[missing]
+  rownames(counts) <- make.unique(as.character(symbols))
+  colnames(counts) <- as.character(SummarizedExperiment::colData(sce)$Barcode)
+
+  # The counts are an HDF5-backed DelayedMatrix; Seurat wants them in memory.
+  methods::as(counts, "dgCMatrix")
+}
+
+# Write the counts back out in 10x format so the Python example can start from
+# exactly these numbers; keeping both languages on one input is what makes the
+# two sets of results comparable.
+write_10x <- function(counts, directory) {
+  dir.create(directory, showWarnings = FALSE, recursive = TRUE)
+  gz <- function(name) gzfile(file.path(directory, name), open = "wt")
+
+  connection <- gz("barcodes.tsv.gz")
+  writeLines(colnames(counts), connection)
+  close(connection)
+
+  connection <- gz("features.tsv.gz")
+  writeLines(
+    paste(rownames(counts), rownames(counts), "Gene Expression", sep = "\t"),
+    connection
+  )
+  close(connection)
+
+  temporary <- tempfile(fileext = ".mtx")
+  Matrix::writeMM(counts, temporary)
+  connection <- gz("matrix.mtx.gz")
+  writeLines(readLines(temporary), connection)
+  close(connection)
+  unlink(temporary)
+
+  directory
+}
+
+if (identical(source_arg, "pbmc4k")) {
+  cat("Loading pbmc4k through TENxPBMCData (cached by Bioconductor)\n")
+  counts <- load_pbmc4k()
+  matrix_dir <- write_10x(counts, file.path(results_dir, "01_matrix_10x"))
+  cat(sprintf("  wrote the same counts in 10x format to %s\n", matrix_dir))
+} else {
+  cat(sprintf("Loading 10x data from %s\n", source_arg))
+  counts <- Read10X(data.dir = source_arg)
+}
+
 object <- CreateSeuratObject(counts = counts, min.cells = MIN_CELLS,
                              min.features = MIN_GENES)
 cat(sprintf("  loaded %d cells x %d genes\n", ncol(object), nrow(object)))
