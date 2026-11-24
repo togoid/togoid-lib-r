@@ -15,6 +15,13 @@
 #'   \item \code{\link{LabelConverter}}: Convert labels to IDs
 #' }
 #'
+#' @section Enrichment Analysis:
+#' \itemize{
+#'   \item \code{\link{togoid_gene_sets}}: Turn any conversion route into gene sets
+#'   \item \code{\link{togoid_enrich_clusters}}: Over-representation analysis per cluster
+#'   \item \code{\link{togoid_plot_umap_enrichment}}: Draw the results on a UMAP
+#' }
+#'
 #' @section Main Functions:
 #' \itemize{
 #'   \item \code{\link{togoid_convert}}: Convert IDs between databases
@@ -30,6 +37,7 @@
 #' @aliases togoid
 #'
 #' @importFrom R6 R6Class
+#' @importFrom rlang .data
 NULL
 
 ## usethis namespace: start

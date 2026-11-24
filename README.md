@@ -11,6 +11,7 @@ R library for biological database ID conversion and annotation using [TogoID](ht
 - **Multiple Formats**: Support for dataframe, tibble, table, list, and JSON
 - **Dual Interface**: Use as R library with both R6 classes and functional wrappers
 - **Comprehensive**: Search databases, find routes, get configurations
+- **Enrichment Analysis**: Turn any conversion route into gene sets, test them for over-representation, and draw the result on a single-cell UMAP
 
 ## Installation
 
@@ -266,6 +267,46 @@ data <- data |>
   )
 ```
 
+### Enrichment analysis and UMAP visualisation
+
+A TogoID route that ends in an annotation dataset *is* a gene-set library: every
+term it reaches becomes a set of the input genes that map to it.
+
+```r
+library(togoid)
+
+# Only the route changes between annotation databases:
+#   c("ncbigene", "uniprot", "reactome_pathway")  Reactome pathways
+#   c("ncbigene", "uniprot", "go")                GO terms
+#   c("ncbigene", "medgen", "mondo")              MONDO diseases
+# Any other route TogoID can reach works the same way. The three above also
+# have shortcuts: togoid_reactome_gene_sets(), togoid_go_gene_sets(),
+# togoid_mondo_gene_sets().
+gene_sets <- togoid_gene_sets(
+  all_marker_genes,
+  route = c("ncbigene", "uniprot", "reactome_pathway")
+)
+
+# Hypergeometric test per cluster, Benjamini-Hochberg corrected.
+results <- togoid_enrich_clusters(markers_per_cluster, gene_sets)
+
+figure <- togoid_plot_umap_enrichment(embedding, results, top_n = 3)
+ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
+
+# The same terms as a table: these filters are the ones the figure used, so the
+# two cannot disagree.
+togoid_write_enrichment(
+  togoid_top_terms(togoid_significant(results, 0.05), 3),
+  "umap_enrichment.tsv"
+)
+```
+
+![UMAP with enriched Reactome pathways](https://raw.githubusercontent.com/suimye/togoid-lib-r/docs-figures/umap_enrichment_reactome_r.png)
+
+See `vignette("enrichment", package = "togoid")`, and
+`system.file("examples/scRNAseq_enrichment", package = "togoid")` for a runnable
+pipeline on real data.
+
 ## API Reference
 
 ### Main Classes
@@ -339,6 +380,14 @@ result <- togoid_convert(ids = c("1", "9"), route = c("ncbigene", "ensembl_gene"
 - cli
 - rlang
 
+Optional, for the enrichment analysis:
+
+- ggplot2 and patchwork - the UMAP figures
+- Seurat - the single-cell adapters and the example pipeline
+
+The enrichment analysis itself needs no extra packages: `stats::phyper()` and
+`stats::p.adjust()` do the statistics.
+
 ## Testing
 
 ```r
@@ -347,6 +396,13 @@ devtools::test()
 
 # Check package
 devtools::check()
+```
+
+Tests that call the TogoID API are skipped on CRAN and when offline. To run them
+locally:
+
+```bash
+NOT_CRAN=true Rscript -e 'devtools::test()'
 ```
 
 ## License
