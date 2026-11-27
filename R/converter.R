@@ -197,7 +197,7 @@ TogoIDConverter <- R6::R6Class(
     lookup_id = function(id_string) {
       result <- make_request(
         base_url = self$api_base_url,
-        endpoint = paste0("lookup/", id_string),
+        endpoint = paste0("lookup/id/", id_string),
         method = "GET"
       )
       return(result)
