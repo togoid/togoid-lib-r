@@ -2,399 +2,218 @@
 
 R library for biological database ID conversion and annotation using [TogoID](https://togoid.dbcls.jp/).
 
+```r
+library(togoid)
+
+togoid_convert(ids = c("1", "9"), route = c("ncbigene", "ensembl_gene"))
+#   ncbigene    ensembl_gene
+# 1        1 ENSG00000121410
+# 2        9 ENSG00000171428
+```
+
 ## Features
 
-- **ID Conversion**: Convert IDs between biological databases
-- **Ortholog Retrieval**: Get orthologs through round-trip conversion
-- **Label to ID**: Convert biological labels (gene names, etc.) to database IDs
-- **Annotations**: Get labels and annotations for database IDs
-- **Multiple Formats**: Support for dataframe, tibble, table, list, and JSON
-- **Dual Interface**: Use as R library with both R6 classes and functional wrappers
-- **Comprehensive**: Search databases, find routes, get configurations
-- **Enrichment Analysis**: Turn any conversion route into gene sets, test them for over-representation, and draw the result on a single-cell UMAP
+- **ID conversion** between biological databases along any TogoID route
+- **Annotations and filtering**: add annotation columns to conversion results, or keep only rows matching annotation values
+- **Ortholog retrieval** through round-trip conversion and taxonomy filtering
+- **Label to ID**: resolve labels (gene symbols, compound or disease names) to database IDs
+- **Annotations** (labels and other fields) for database IDs
+- Output as data.frame (default), tibble, or list
+- Functional wrappers (`togoid_*()`) and R6 classes
 
 ## Installation
 
-### From GitHub
-
 ```r
-# Install devtools if needed
-install.packages("devtools")
-
-# Install togoid from GitHub
+# install.packages("devtools")
 devtools::install_github("togoid/togoid-lib-r")
 ```
 
-### From Source
+From a clone of the repository:
 
 ```bash
-# Clone the repository
 git clone https://github.com/togoid/togoid-lib-r.git
 cd togoid-lib-r
-
-# Install dependencies
 Rscript install_dependencies.R
-
-# Install the package
 R CMD INSTALL .
-
-# Or using devtools in R
-devtools::install()
 ```
 
-## Quick Start
+## Usage
 
-### Basic ID Conversion
+### ID Conversion
 
 ```r
 library(togoid)
 
-# Functional style - convert ncbigene to ensembl_gene
-result <- togoid_convert(
-  ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene")
-)
-print(result)
-#   ncbigene  ensembl_gene
-# 1        1 ENSG00000121410
-# 2        9 ENSG00000171428
+# Output formats: "dataframe" (default), "tibble", "list"
+togoid_convert(ids = c("1", "9"), route = c("ncbigene", "ensembl_gene"), format = "tibble")
 
-# Note: Column names use dataset names from the route
-# Default format is "dataframe" with report="full"
-
-# Using pipe operator
+# Pipes work, since ids is the first argument
 c("1", "9") |>
   togoid_convert(route = c("ncbigene", "ensembl_gene"))
+```
 
-# R6 class style
-converter <- TogoIDConverter$new()
-result <- converter$convert(
+Columns are named after the datasets in the route. The default `report = "full"`
+returns every ID along the route; `"pair"` and `"target"` return less.
+
+#### Annotations and Filtering
+
+`annotate` adds annotation columns; `filter` keeps only rows whose annotation
+matches one of the given values.
+
+```r
+togoid_convert(
   ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene"),
-  format = "tibble"
+  route = c("ncbigene", "ensembl_gene", "ensembl_transcript"),
+  annotate = list(list("ncbigene", "label")),
+  filter = list(list("ensembl_transcript", "transcript_flag", c("MANE Select")))
 )
+#   ncbigene ncbigene.label    ensembl_gene ensembl_transcript
+# 1        1           A1BG ENSG00000121410    ENST00000263100
+# 2        9           NAT1 ENSG00000171428    ENST00000307719
 ```
 
-### Get Orthologs
+#### Orthologs
 
 ```r
-# Get mouse and rat orthologs for human genes
-orthologs <- togoid_get_ortholog(
-  ids = c("672", "7157"),
+# ncbigene -> homologene -> ncbigene -> taxonomy, then filter by taxonomy ID
+togoid_get_ortholog(
+  ids = c("672", "7157"),               # Human BRCA1, TP53
   route = c("ncbigene", "homologene"),
-  target_taxids = c("10090", "10116"),  # Mouse and Rat
-  format = "dataframe"
+  target_taxids = c("10090", "10116")   # Mouse and Rat
 )
-print(orthologs)
 #   source_id intermediate_id target_id taxonomy_id
-# 1       672           11167     11167       10090
-# 2       672           11167    140656       10116
-# 3      7157           37329    116632       10116
-# 4      7157           37329     17961       10090
+# 1       672            5276     12189       10090
+# 2       672            5276    497672       10116
+# 3      7157             460     22059       10090
+# 4      7157             460     24842       10116
 ```
 
-### Label to ID Conversion
+#### Exploring Datasets and Routes
 
 ```r
-# Convert gene symbols to ncbigene IDs
-# Default format is now "dataframe"
-result <- togoid_label2id(
-  labels = c("BRCA1", "TP53", "EGFR"),
-  dataset = "ncbigene",
-  taxonomy = "9606"  # Human
-)
-print(result)
+togoid_search_databases("uniprot")                         # Search databases by name
+togoid_route(src = "ncbigene", dst = "uniprot", max_hops = 3)
+togoid_config_list_targets("ncbigene")                     # Datasets reachable in one hop
+```
+
+The remaining API endpoints are methods of the `TogoIDConverter` R6 class:
+
+```r
+converter <- TogoIDConverter$new()
+converter$count(src = "ncbigene", dst = "ensembl_gene", ids = c("1", "9"))
+converter$search_id("NM_001110")      # Databases whose ID pattern matches
+converter$lookup_id("672")            # Tables that contain an ID
+converter$config_dataset("ncbigene")
+```
+
+Configuration of the TogoID API is also available through `config_relation()`,
+`config_descriptions()`, `config_statistics()` and `config_taxonomy()`.
+
+### Label to ID
+
+```r
+togoid_label2id(labels = c("BRCA1", "TP53", "EGFR"), dataset = "ncbigene", taxonomy = "9606")
 #   input match_type symbol identifier taxonomy
 # 1 BRCA1     symbol  BRCA1        672     9606
 # 2  TP53     symbol   TP53       7157     9606
 # 3  EGFR     symbol   EGFR       1956     9606
 
-# Extract IDs
-ids <- result$identifier
-print(ids)
-# [1] "672"  "7157" "1956"
-```
+# Compound and disease names
+togoid_label2id(labels = "caffeine", dataset = "chebi")
+togoid_label2id(labels = "breast cancer", dataset = "mondo")
 
-### Get Annotations
-
-```r
-# List available fields
-fields <- togoid_list_fields("ncbigene")
-print(fields)
-
-# Get annotations (default format is now "dataframe")
-annotations <- togoid_annotate(
-  dataset = "ncbigene",
-  ids = c("672", "7157"),
-  fields = c("label", "gene_synonym")
-)
-print(annotations)
-#    id label              gene_synonym
-# 1 672 BRCA1 RNF53, BRCC1, FANCS, ...
-# 2 7157 TP53  P53, LFS1, TRP53, ...
-
-# With filters (R uses named lists)
-annotations <- togoid_annotate(
-  dataset = "go",
-  ids = c("GO:0005643", "GO:0097110"),
-  fields = c("label", "go_aspect"),
-  filters = list(go_aspect = c("molecular_function"))
-)
-```
-
-### Search and Route
-
-```r
-# Search databases
-databases <- togoid_search_databases("uniprot")
-
-# Find routes between databases
-routes <- togoid_route(
-  src = "ncbigene",
-  dst = "uniprot",
-  max_hops = 3
-)
-
-# List target datasets reachable from a source in one hop
-targets <- togoid_config_list_targets("ncbigene")
-print(targets)
-# [1] "ensembl_gene" "ensembl_protein" "ensembl_transcript" ...
-```
-
-## Usage Examples
-
-### Different Output Formats
-
-```r
-# List format
-result <- togoid_convert(
-  ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene"),
-  format = "list"
-)
-
-# Table format (list of character vectors)
-result <- togoid_convert(
-  ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene"),
-  format = "table"
-)
-
-# Tibble format
-result <- togoid_convert(
-  ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene"),
-  format = "tibble"
-)
-
-# JSON format
-result <- togoid_convert(
-  ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene"),
-  format = "json"
-)
-```
-
-### Using R6 Classes
-
-```r
-# TogoIDConverter
-converter <- TogoIDConverter$new()
-
-# Convert IDs
-result <- converter$convert(
-  ids = c("1", "9"),
-  route = c("ncbigene", "ensembl_gene")
-)
-
-# Count mappings
-count_info <- converter$count(
-  src = "ncbigene",
-  dst = "ensembl_gene",
-  ids = c("1", "9")
-)
-
-# Get configuration
-config <- converter$config_dataset("ncbigene")
-
-# AnnotationsConverter
-annotator <- AnnotationsConverter$new()
-
-fields <- annotator$list_fields("ncbigene")
-annotations <- annotator$execute_query(
-  dataset_name = "ncbigene",
-  ids = c("672", "7157"),
-  fields = c("label", "gene_synonym")
-)
-
-# LabelConverter
-label_conv <- LabelConverter$new(verbose = TRUE)
-
-results <- label_conv$convert(
-  labels = c("BRCA1", "TP53"),
-  dataset = "ncbigene",
-  taxonomy = "9606"
-)
-```
-
-### Functional Programming Style
-
-```r
-library(dplyr)
-
-# Chain operations with pipes
-gene_symbols <- c("BRCA1", "TP53", "EGFR")
-
-# togoid_label2id() returns a data.frame, so pull the identifier column directly
-result <- gene_symbols |>
+# From labels to converted IDs
+c("BRCA1", "TP53", "EGFR") |>
   togoid_label2id(dataset = "ncbigene", taxonomy = "9606") |>
   (\(df) df$identifier[!is.na(df$identifier)])() |>
   togoid_convert(route = c("ncbigene", "ensembl_gene"))
-
-# Using with dplyr
-library(tibble)
-
-data <- tibble(
-  gene = c("BRCA1", "TP53", "EGFR")
-)
-
-data <- data |>
-  mutate(
-    ncbigene_id = sapply(gene, function(g) {
-      res <- togoid_label2id(g, "ncbigene", "9606")
-      res$identifier[1]
-    })
-  )
 ```
 
-### Enrichment analysis and UMAP visualisation
+The upstream service is chosen from the dataset's `label_resolver`
+configuration in the TogoID API: SPARQList when it names one (e.g. `ncbigene`),
+PubDictionaries otherwise (e.g. `chebi`, `mondo`). To call one of them
+directly, use the `convert_sparqlist()` or `convert_pubdictionaries()` methods
+of `LabelConverter`.
 
-A TogoID route that ends in an annotation dataset *is* a gene-set library: every
-term it reaches becomes a set of the input genes that map to it.
+### Annotations
 
 ```r
-library(togoid)
+togoid_list_fields("ncbigene")
 
-# Only the route changes between annotation databases:
-#   c("ncbigene", "uniprot", "reactome_pathway")  Reactome pathways
-#   c("ncbigene", "uniprot", "go")                GO terms
-#   c("ncbigene", "medgen", "mondo")              MONDO diseases
-# Any other route TogoID can reach works the same way. The three above also
-# have shortcuts: togoid_reactome_gene_sets(), togoid_go_gene_sets(),
-# togoid_mondo_gene_sets().
-gene_sets <- togoid_gene_sets(
-  all_marker_genes,
-  route = c("ncbigene", "uniprot", "reactome_pathway")
+togoid_annotate(
+  dataset = "ncbigene",
+  ids = c("672", "7157"),
+  fields = c("label", "gene_synonym")
 )
+#     id label gene_synonym      <- multi-valued fields are list-columns
+# 1  672 BRCA1 IRIS, RNF53, ...
+# 2 7157  TP53 LFS1, BMFS5, ...
 
-# Hypergeometric test per cluster, Benjamini-Hochberg corrected.
-results <- togoid_enrich_clusters(markers_per_cluster, gene_sets)
-
-figure <- togoid_plot_umap_enrichment(embedding, results, top_n = 3)
-ggplot2::ggsave("umap_enrichment.pdf", figure, width = 20, height = 8)
-
-# The same terms as a table: these filters are the ones the figure used, so the
-# two cannot disagree.
-togoid_write_enrichment(
-  togoid_top_terms(togoid_significant(results, 0.05), 3),
-  "umap_enrichment.tsv"
+# Filters are a named list of allowed values
+togoid_annotate(
+  dataset = "go",
+  ids = c("0005643", "0003677"),
+  fields = c("label", "go_aspect"),
+  filters = list(go_aspect = c("molecular_function"))
 )
+#        id       label          go_aspect
+# 1 0003677 DNA binding molecular_function
 ```
 
-![UMAP with enriched Reactome pathways](https://raw.githubusercontent.com/suimye/togoid-lib-r/docs-figures/umap_enrichment_reactome_r.png)
+### R6 Classes
 
-See `vignette("enrichment", package = "togoid")`, and
-`system.file("examples/scRNAseq_enrichment", package = "togoid")` for a runnable
-pipeline on real data.
+The wrappers create an R6 object per call. To reuse one, or to set a custom
+endpoint, use the classes directly; their methods take the same arguments:
 
-## API Reference
-
-### Main Classes
-
-#### TogoIDConverter
-
-- `convert(ids, route, format, report, ...)` - Convert IDs between databases (default: format="dataframe", report="full")
-- `get_ortholog(ids, route, target_taxids, format)` - Get orthologs
-- `search_databases(name)` - Search databases by name
-- `search_id(id_string)` - Search databases by ID pattern
-- `lookup_id(id_string)` - Lookup which tables contain an ID
-- `route(src, dst, max_hops)` - Find conversion routes
-- `count(src, dst, ids, link)` - Count mappings
-- `config_dataset(name)` - Get dataset configuration
-- `config_relation(src, dst)` - Get relation configuration
-- `config_descriptions()` - Get database descriptions
-- `config_statistics()` - Get database statistics
-- `config_taxonomy()` - Get taxonomy list
-- `config_list_targets(source)` - List target datasets reachable in one hop
-
-#### AnnotationsConverter
-
-- `get_dataset(dataset_name)` - Get dataset configuration
-- `list_fields(dataset_name)` - List available annotation fields
-- `execute_query(dataset_name, ids, fields, filters, format)` - Execute GraphQL query (default format: "dataframe")
-- `build_rows(dataset_label, fields, field_meta, records, filters, compact)` - Build table rows
-
-#### LabelConverter
-
-- `convert(labels, dataset, taxonomy, format, ...)` - Convert labels to IDs (auto-detects API, default format: "dataframe")
-- `convert_pubdictionaries(labels, dictionaries, tags, threshold, ...)` - Use PubDictionaries API
-- `convert_sparqlist(labels, sparqlist, label_types, taxonomy)` - Use SPARQList API
-
-### Wrapper Functions
-
-- `togoid_convert(ids, route, format, ...)` - ID conversion (default: format="dataframe", report="full")
-- `togoid_get_ortholog(ids, route, target_taxids, format)` - Ortholog retrieval
-- `togoid_annotate(dataset, ids, fields, filters, format)` - Get annotations (default format: "dataframe")
-- `togoid_list_fields(dataset)` - List annotation fields
-- `togoid_label2id(labels, dataset, taxonomy, format, ...)` - Label to ID conversion (default format: "dataframe")
-- `togoid_search_databases(name)` - Search databases
-- `togoid_route(src, dst, max_hops)` - Find routes
-- `togoid_config_list_targets(source)` - List target datasets reachable in one hop
+| Wrapper | R6 method |
+|---|---|
+| `togoid_convert()`, `togoid_get_ortholog()`, `togoid_search_databases()`, `togoid_route()`, `togoid_config_list_targets()` | `TogoIDConverter$new()$convert()`, `$get_ortholog()`, ... |
+| `togoid_label2id()` | `LabelConverter$new()$convert()` |
+| `togoid_annotate()`, `togoid_list_fields()` | `AnnotationsConverter$new()$execute_query()`, `$list_fields()` |
 
 ## Configuration
 
-### Environment Variables
-
-- `TOGOID_API_ENDPOINT` - TogoID API base URL (default: https://api.togoid.dbcls.jp)
-- `TOGOID_GRASP_ENDPOINT` - GRASP GraphQL endpoint (default: https://dx.dbcls.jp/grasp-dev-togoid)
-
-### Custom API Endpoints
+- `TOGOID_API_ENDPOINT`: TogoID API base URL (default: https://api.togoid.dbcls.jp)
+- `TOGOID_GRASP_ENDPOINT`: GRASP GraphQL endpoint used for annotations (default: https://dx.dbcls.jp/grasp-dev-togoid)
 
 ```r
-# R6 classes
-converter <- TogoIDConverter$new(api_base_url = "http://localhost:5000")
-
-# Wrapper functions use environment variables
+# Wrapper functions read the environment variables
 Sys.setenv(TOGOID_API_ENDPOINT = "http://localhost:5000")
-result <- togoid_convert(ids = c("1", "9"), route = c("ncbigene", "ensembl_gene"))
+
+# R6 classes also take the URL directly
+converter <- TogoIDConverter$new(api_base_url = "http://localhost:5000")
 ```
+
+See [NEWS.md](NEWS.md) for changes, including breaking ones.
+
+## Examples
+
+### Enrichment Analysis for scRNA-seq
+
+An example of building on TogoID: a conversion route that ends in an annotation
+dataset (e.g. `ncbigene → uniprot → reactome_pathway`) is used as a gene-set
+library for over-representation analysis of single-cell clusters, with the
+results drawn on a UMAP.
+
+> **Note:** This is an experimental, illustrative extension, not part of TogoID's
+> core functionality. It ships as the `togoid_gene_sets()`,
+> `togoid_enrich_clusters()`, `togoid_plot_umap_enrichment()` and related
+> functions, but their API may change.
+
+- `system.file("examples/scRNAseq_enrichment", package = "togoid")`: a runnable
+  pipeline on real data ([inst/examples/scRNAseq_enrichment/](inst/examples/scRNAseq_enrichment/))
+- `vignette("enrichment", package = "togoid")`: the functions and the optional
+  packages they need ([vignettes/enrichment.Rmd](vignettes/enrichment.Rmd))
 
 ## Requirements
 
 - R >= 4.0.0
-- R6
-- httr2
-- jsonlite
-- dplyr
-- tibble
-- cli
-- rlang
-
-Optional, for the enrichment analysis:
-
-- ggplot2 and patchwork - the UMAP figures
-- Seurat - the single-cell adapters and the example pipeline
-
-The enrichment analysis itself needs no extra packages: `stats::phyper()` and
-`stats::p.adjust()` do the statistics.
+- R6, httr2, jsonlite, dplyr, tibble, cli, rlang
 
 ## Testing
 
 ```r
-# Run tests
 devtools::test()
-
-# Check package
 devtools::check()
 ```
 
