@@ -39,8 +39,7 @@ runtime_packages <- c(
 
 # Optional packages
 optional_packages <- c(
-  "ghql",          # GraphQL client
-  "docopt"         # CLI argument parsing
+  "ghql"           # GraphQL client
 )
 
 # Function to install packages if not already installed
