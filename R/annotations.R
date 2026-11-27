@@ -139,16 +139,25 @@ AnnotationsConverter <- R6::R6Class(
       query <- query_info$query
       variables_template <- query_info$variables
 
+      # GRASP is keyed by raw local IDs. Accept prefixed IDs (e.g. GO:0005634)
+      # by querying with the local ID, and key the results by the caller's
+      # original form. A no-op for IDs without a prefix.
+      original_ids <- unique(as.character(ids))
+      local_ids <- local_id(original_ids)
+      first <- !duplicated(local_ids)
+      query_ids <- local_ids[first]
+      original_for_local <- stats::setNames(original_ids[first], query_ids)
+
       # Execute query in batches (to avoid too large requests)
       batch_size <- 100
       all_records <- list()
 
-      for (i in seq(1, length(ids), by = batch_size)) {
-        end_idx <- min(i + batch_size - 1, length(ids))
-        batch_ids <- ids[i:end_idx]
+      for (i in seq(1, length(query_ids), by = batch_size)) {
+        end_idx <- min(i + batch_size - 1, length(query_ids))
+        batch_ids <- query_ids[i:end_idx]
 
         if (self$verbose) {
-          cli::cli_alert_info("Querying IDs {i}-{end_idx} of {length(ids)}")
+          cli::cli_alert_info("Querying IDs {i}-{end_idx} of {length(query_ids)}")
         }
 
         # Prepare variables for this batch
@@ -169,6 +178,8 @@ AnnotationsConverter <- R6::R6Class(
 
           for (record in records) {
             id_value <- as.character(record$id)
+            original <- unname(original_for_local[id_value])
+            if (!is.na(original)) id_value <- original
             all_records[[id_value]] <- record
           }
         }
@@ -184,11 +195,14 @@ AnnotationsConverter <- R6::R6Class(
       # IDs that don't satisfy the filter must be dropped entirely, so we skip
       # this padding step.
       if (length(filters) == 0) {
-        requested_ids <- unique(as.character(ids))
+        requested_ids <- original_ids
         ordered_records <- list()
         for (req_id in requested_ids) {
-          if (req_id %in% names(all_records)) {
-            ordered_records[[req_id]] <- all_records[[req_id]]
+          # The same local ID given in two forms (GO:0005643 and 0005643) was
+          # queried once and stored under the first form
+          stored_as <- unname(original_for_local[local_id(req_id)])
+          if (!is.na(stored_as) && stored_as %in% names(all_records)) {
+            ordered_records[[req_id]] <- all_records[[stored_as]]
           } else {
             ordered_records[[req_id]] <- list()
           }

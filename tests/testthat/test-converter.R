@@ -59,3 +59,38 @@ test_that("TogoIDConverter$config_dataset works", {
   expect_type(result, "list")
   expect_true("label" %in% names(result))
 })
+
+test_that("togoid_convert annotates and filters prefixed IDs", {
+  skip_on_cran()
+  skip_if_offline()
+
+  # /convert returns GO IDs prefixed (GO:0005829); annotations are keyed by
+  # the raw local ID
+  route <- c("orphanet_gene", "uniprot", "go")
+  annotated <- togoid_convert("217124", route, annotate = list(list("go", "label")))
+  expect_true(any(grepl("^GO:", annotated$go)))
+  expect_false(all(is.na(annotated[["go.label"]])))
+
+  filtered <- togoid_convert(
+    "217124", route,
+    annotate = list(list("go", "go_aspect")),
+    filter = list(list("go", "go_aspect", "molecular_function"))
+  )
+  expect_true(nrow(filtered) > 0)
+  expect_true(all(filtered[["go.go_aspect"]] == "molecular_function"))
+})
+
+test_that("togoid_get_ortholog keeps unconvertible IDs as NA rows", {
+  skip_on_cran()
+  skip_if_offline()
+
+  result <- togoid_get_ortholog(
+    ids = c("672", "999999999"),
+    route = c("ncbigene", "homologene"),
+    target_taxids = "10090"
+  )
+  expect_true("672" %in% result$source_id)
+  missing <- result[result$source_id == "999999999", ]
+  expect_equal(nrow(missing), 1)
+  expect_true(is.na(missing$target_id))
+})
