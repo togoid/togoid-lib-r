@@ -33,7 +33,7 @@ TogoIDConverter <- R6::R6Class(
     #'
     #' @param ids Character vector of source IDs
     #' @param route Character vector of database names forming the conversion route
-    #' @param format Output format: "json", "list", "table", "dataframe", "tibble"
+    #' @param format Output format: "dataframe" (default), "tibble", or "list"
     #' @param report Report type: "target", "pair", "full" (default: "full")
     #' @param annotate List of lists: list(list("dataset", "field")) to add annotation columns
     #' @param filter List of lists: list(list("dataset", "field", c("values"))) to filter results

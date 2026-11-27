@@ -15,7 +15,10 @@
 #'   \item \code{\link{LabelConverter}}: Convert labels to IDs
 #' }
 #'
-#' @section Enrichment Analysis:
+#' @section Enrichment Analysis (experimental):
+#' An experimental, illustrative extension built on TogoID, not part of its
+#' core functionality; its API may change. See
+#' \code{vignette("enrichment", package = "togoid")}.
 #' \itemize{
 #'   \item \code{\link{togoid_gene_sets}}: Turn any conversion route into gene sets
 #'   \item \code{\link{togoid_enrich_clusters}}: Over-representation analysis per cluster
