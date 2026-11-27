@@ -130,3 +130,25 @@ normalize_format <- function(format) {
 `%||%` <- function(x, y) {
   if (is.null(x)) y else x
 }
+
+#' Strip a CURIE prefix from an identifier
+#'
+#' Since togoid-api PR #149 the `/convert` endpoint can format IDs with their
+#' dataset prefix (`0005634` becomes `GO:0005634`). Annotation lookups are keyed
+#' by raw local IDs, so identifiers are normalised before being used as join
+#' keys. The function is a no-op on unprefixed IDs, which keeps the code correct
+#' both before and after that change is deployed.
+#'
+#' @param id Character vector of identifiers.
+#'
+#' @return The identifiers with any single leading prefix removed.
+#' @keywords internal
+local_id <- function(id) {
+  if (!is.character(id)) {
+    return(id)
+  }
+  # A URI (containing "//") is left alone; so is anything without a colon.
+  prefixed <- grepl(":", id, fixed = TRUE) & !grepl("//", id, fixed = TRUE)
+  id[prefixed] <- sub("^[^:]*:", "", id[prefixed])
+  id
+}

@@ -62,6 +62,14 @@ in this repository.
 
 ## Bug fixes
 
+* IDs prefixed by the TogoID API (e.g. `GO:0005634`, which `/convert` returns
+  by default) are matched by their raw local ID:
+  `togoid_convert(annotate = , filter = )` no longer returns `NA` annotations
+  or fails for such datasets, `togoid_annotate()` accepts prefixed IDs and keys
+  the result by the form given, and `togoid_get_ortholog()` compares source and
+  taxonomy IDs the same way.
+* `togoid_get_ortholog()` no longer fails when an input ID cannot be converted;
+  the ID is returned as a row of `NA`.
 * `TogoIDConverter$lookup_id()` called a non-existent API path and always
   failed with HTTP 404.
 * `togoid_label2id()` reports an error when a dataset that requires a taxonomy

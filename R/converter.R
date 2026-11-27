@@ -127,31 +127,35 @@ TogoIDConverter <- R6::R6Class(
         all_results
       })
 
+      # IDs are compared by their raw local ID, since /convert may return them
+      # prefixed (e.g. GO:0005634); the rows keep the API's form for display.
+
       # Track which input IDs had any API results
       all_source_ids <- character()
       for (row in table_data) {
-        if (is.list(row) && length(row) >= 1) {
-          all_source_ids <- c(all_source_ids, as.character(row[[1]]))
+        # A row only counts if the conversion got past the source ID
+        if (is.list(row) && length(row) >= 2 && length(row[[2]]) == 1) {
+          all_source_ids <- c(all_source_ids, local_id(as.character(row[[1]])))
         }
       }
 
       # Filter by target taxonomy IDs
+      target_taxid_keys <- local_id(as.character(target_taxids))
       filtered <- list()
-      found_ids <- character()
       if (length(table_data) > 0) {
         for (row in table_data) {
-          if (is.list(row) && length(row) >= 4) {
-            if (as.character(row[[4]]) %in% target_taxids) {
+          # Rows for IDs that could not be converted carry NULL (JSON null)
+          if (is.list(row) && length(row) >= 4 && length(row[[4]]) == 1) {
+            if (local_id(as.character(row[[4]])) %in% target_taxid_keys) {
               filtered[[length(filtered) + 1]] <- row
-              found_ids <- c(found_ids, as.character(row[[1]]))
             }
           }
         }
       }
 
       # Add NA rows for IDs that had no conversion results at all
-      missing_ids <- setdiff(ids, unique(all_source_ids))
-      for (mid in missing_ids) {
+      missing_ids <- ids[!local_id(as.character(ids)) %in% all_source_ids]
+      for (mid in unique(missing_ids)) {
         filtered[[length(filtered) + 1]] <- list(mid, NA_character_, NA_character_, NA_character_)
       }
 
@@ -645,7 +649,9 @@ TogoIDConverter <- R6::R6Class(
           if (is.list(row) && length(row) >= dataset_index) {
             elem <- row[[dataset_index]]
             if (!is.null(elem) && length(elem) > 0) {
-              id_value <- as.character(elem)
+              # Annotations are keyed by raw local IDs, while /convert returns
+              # prefixed IDs (e.g. GO:0005634) by default.
+              id_value <- local_id(as.character(elem))
               if (!is.na(id_value) && nchar(id_value) > 0) {
                 ids_to_annotate <- c(ids_to_annotate, id_value)
               }
@@ -697,7 +703,7 @@ TogoIDConverter <- R6::R6Class(
             elem <- if (length(row) >= dataset_index) row[[dataset_index]] else NULL
             id_value <- NULL
             if (!is.null(elem) && length(elem) > 0) {
-              id_value <- as.character(elem)
+              id_value <- local_id(as.character(elem))
               if (is.na(id_value) || nchar(id_value) == 0) id_value <- NULL
             }
 
@@ -706,7 +712,11 @@ TogoIDConverter <- R6::R6Class(
                 !is.null(annotations_cache[[dataset_name]][[id_value]])) {
               annotation_value <- annotations_cache[[dataset_name]][[id_value]][[field_name]]
 
-              if (is.list(annotation_value)) {
+              if (is.null(annotation_value)) {
+                # The ID has no value for this field, so it cannot match
+                passes_filter <- FALSE
+                break
+              } else if (is.list(annotation_value)) {
                 # Check if any value matches
                 if (!any(as.character(unlist(annotation_value)) %in% allowed_values)) {
                   passes_filter <- FALSE
@@ -748,7 +758,7 @@ TogoIDConverter <- R6::R6Class(
             elem <- if (length(row) >= dataset_index) row[[dataset_index]] else NULL
             id_value <- NULL
             if (!is.null(elem) && length(elem) > 0) {
-              id_value <- as.character(elem)
+              id_value <- local_id(as.character(elem))
               if (is.na(id_value) || nchar(id_value) == 0) id_value <- NULL
             }
 
