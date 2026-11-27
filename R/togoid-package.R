@@ -3,8 +3,8 @@
 
 #' togoid: R Library for Biological Database ID Conversion and Annotation
 #'
-#' R library and CLI tool for biological database ID conversion and annotation
-#' using TogoID (\url{https://togoid.dbcls.jp/}). Provides functions for
+#' R library for biological database ID conversion and annotation using
+#' TogoID (\url{https://togoid.dbcls.jp/}). Provides functions for
 #' converting IDs between biological databases, retrieving annotations, and
 #' converting labels to IDs.
 #'
